@@ -7,9 +7,1570 @@ editor_options:
   chunk_output_type: console
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  autodep = TRUE,
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center", 
+  out.width ="75%", 
+  out.height = "75%"
+)
+```
+
+```{r loadLibs}
+# data wrangling
+library(tidyverse)
+library(magrittr)
+library(readxl)
+
+# bioconductor
+library(AnnotationHub)
+library(msigdbr)
+library(edgeR)
+library(goseq)
+library(fgsea)
+library(harmonicmeanp)
+
+# vis
+library(scales)
+library(pheatmap)
+library(ggpubr)
+library(ggrepel)
+library(ggeasy)
+library(ggfortify)
+library(ggforce) # for facet_zoom
+library(RColorBrewer)
+library(UpSetR)
+library(pander)
+
+theme_set(theme_classic())
+```
+
 ## Introduction
+
+Pre-processing of the RNAseq data looked all good. Therefore, I will now perform the analysis of the data.
+
+## read in data
+
+annotations of genes and transcripts obtained from `AnnotationHub` for GRCz11, ensembl release 109. This was the genome the data was aligned to.
+
+A weighted average %GC per gene (weighted by transcript lengths) was calculated, as well as the average transcript length per gene as well.
+
+The metadata per fish was collected during data collection.
+
+`FeatureCounts` was used to generate a gene counts matrix.
+
+```{r anno}
+ah <- AnnotationHub() %>%
+  subset(species == "Danio rerio") %>%
+  subset(rdataclass == "EnsDb")
+
+ensDb <- ah[["AH109573"]] # for release 109, what the RNA-seq data was generated frmo
+grTrans <- transcripts(ensDb)
+trLengths <- exonsBy(ensDb, "tx") %>%
+  width() %>%
+  vapply(sum, integer(1))
+mcols(grTrans)$length <- trLengths[names(grTrans)]
+gcGene <- grTrans %>%
+  mcols() %>%
+  as.data.frame() %>%
+  dplyr::select(gene_id, tx_id, gc_content, length) %>%
+  as_tibble() %>%
+  group_by(gene_id) %>%
+  summarise(
+    gc_content = sum(gc_content*length) / sum(length),
+    length = ceiling(median(length))
+  )
+grGenes <- genes(ensDb)
+mcols(grGenes) %<>%
+  as.data.frame() %>%
+  left_join(gcGene) %>%
+  as.data.frame() %>%
+  DataFrame()
+```
+
+```{r meta}
+meta <- 
+  read_xlsx("data/RNAseq/2023jan13 ip injection FeCitrate naglu hom x het 6m full exp meta.xlsx") %>% 
+  # fix up ci,ms
+  mutate(
+    fish_id = as.character(fish_id), 
+    HomeTank = as.factor(HomeTank),
+    genotype = factor(genotype, levels = c("het", "hom")),
+    treatment = factor(treatment, 
+                       levels = c("0.85% saline", 
+                                  "10 µg Fe-citrate")),
+    start.time = as.factor(`start time`), 
+    treatment2 = case_when( # make another more simple treatment label for analysis. 
+      treatment == "0.85% saline" ~ "control", 
+      treatment == "10 µg Fe-citrate" ~ "iron"
+    ),            
+    group = paste0(genotype, "_", treatment2, "_", sex)
+    ) %>% 
+  
+  dplyr::filter(RNAid %in% 1:40) %>%  # only retain the fish submitted for RNAseq
+  mutate(sample = fish_id)
+```
+
+```{r}
+# Read in gene counts, and make expression matrix with gene id as the rownames
+featureCounts <- 
+  read_delim("data/RNAseq/05_featureCounts/counts.out", delim = "\t", skip = 1) %>%
+  set_names(basename(names(.))) %>% 
+  set_names(names(.) %>% str_remove(pattern = "_S[0-9]+.Aligned.sortedByCoord.dedup.out.bam")) %>%
+  as_tibble() %>% 
+  dplyr::select(-c(Chr, Start, End, Length, Strand)) %>% 
+  gather(key = "ULN", value = "counts", starts_with("SAGCFN_23_")) %>% 
+  left_join(meta) %>% 
+  dplyr::select(Geneid, counts, sample = fish_id) %>% 
+  spread(key = "sample", value = "counts") %>% 
+  column_to_rownames("Geneid") %>% 
+  .[,-(dim(.)[2])]
+```
+
+# Number of fish in study
+
+A total of 40 fish were analysed. 10 fish per genotype and treatment. In our previous work, the effect of sex was negligible. So I tried my best to keep equal number of sexes but this was not possible in the saline group (only 2 female hets). Not ideal but this is the best we could do.
+
+```{r}
+meta %>% 
+  ggplot(aes(x = genotype, 
+             fill = sex
+             )) +
+  geom_bar(colour = "black") +
+  facet_wrap(~treatment, 
+             scales = "free_x") +
+  scale_y_continuous(breaks = seq(1,10), 
+                     name = "Number of fish") +
+  scale_fill_manual(values = 
+                      c("pink", "cyan")
+  )
+```
+
+## filter lowly expressed genes
+
+Filtering lowly expressed genes in RNA-seq data is an important step in data analysis to ensure the focus is on genes that are more likely to have biological relevance and significance. Lowly expressed genes often have higher levels of technical noise, which can obscure true biological signals and introduce unwanted variability. By filtering out these lowly expressed genes, we can reduce noise and improve the quality of the data, allowing for more accurate downstream analysis and interpretation. This approach helps prioritize the genes that are more likely to play important roles in biological processes, enabling researchers to gain
+meaningful insights and draw robust conclusions from their RNA-seq experiments.
+
+Here, we define lowly expressed genes if a gene contains less than 0.8 CPM in at least 10 of the RNA-seq samples (following the 10/min lib size rule proposed by Gordon Smyth).
+
+The effect of filtering is found in the plot below.
+
+```{r filt_1}
+a <- featureCounts %>% 
+  cpm(log = TRUE) %>%
+  as.data.frame() %>% 
+  pivot_longer(
+    cols = everything(),
+    names_to = "sample",
+    values_to = "logCPM"
+  ) %>%
+  split(f = .$sample) %>%
+  lapply(function(x){
+    d <- density(x$logCPM)
+    tibble(
+      sample = unique(x$sample),
+      x = d$x,
+      y = d$y
+    )
+  }) %>%
+  bind_rows() %>%
+  left_join(meta) %>% 
+  ggplot(aes(x, y, colour = group, group = sample)) +
+  geom_line() +
+  labs(
+    x = "logCPM",
+    y = "Density",
+    colour = "group"
+  )+
+  ggtitle("Before filtering") 
+
+b <- featureCounts %>% 
+  .[rowSums(cpm(.) >= 0.8) >= 10,] %>% 
+  cpm(log = TRUE) %>%
+  as.data.frame() %>% 
+  pivot_longer(
+    cols = everything(),
+    names_to = "sample",
+    values_to = "logCPM"
+  ) %>%
+  split(f = .$sample) %>%
+  lapply(function(x){
+    d <- density(x$logCPM)
+    tibble(
+      sample = unique(x$sample),
+      x = d$x,
+      y = d$y
+    )
+  }) %>%
+  bind_rows() %>%
+  left_join(meta) %>% 
+  ggplot(aes(x, y, colour = group, group = sample)) +
+  geom_line() +
+  labs(
+    x = "logCPM",
+    y = "Density",
+    colour = "group"
+  )+
+  ggtitle("After filtering")
+
+ggarrange(a, b, 
+          common.legend = TRUE, legend = "right")
+```
+
+```{r dge_1}
+x <- featureCounts %>% 
+  as.matrix() %>% 
+  .[rowSums(cpm(.) >= 0.8) >= 10,] %>%
+  DGEList(
+    samples = tibble(fish_id = colnames(.)) %>%
+      left_join(meta),
+    genes = grGenes[rownames(.)] %>%
+      as.data.frame() %>%
+      dplyr::select(
+        chromosome = seqnames, start, end, 
+        gene_id, gene_name, gene_biotype, description, entrezid
+      ) %>% 
+      left_join(gcGene) %>% 
+      as_tibble()
+  ) %>%
+  calcNormFactors()
+```
+
+## PCA
+
+Principal component analysis was performed to assess the overall similarity between samples and to assess any batch effects.
+
+```{r}
+x$counts %>% 
+  cpm(log=TRUE) %>% 
+  t() %>% 
+  prcomp() %>% 
+  autoplot(data = tibble(sample = rownames(.$x)) %>%
+             left_join(x$samples),
+           colour = "genotype", 
+           size = 6
+  ) +
+  labs(colour = "Genotype", 
+       title = "By genotype") +
+  scale_color_brewer(palette = "Set2")
+
+x$counts %>% 
+  cpm(log=TRUE) %>% 
+  t() %>% 
+  prcomp() %>% 
+  autoplot(data = tibble(sample = rownames(.$x)) %>%
+             left_join(x$samples),
+           colour = "treatment", 
+           shape = "genotype",
+           size = 6
+  ) +
+  labs(colour = "treatment", 
+       title = "By treatment")
+
+x$counts %>% 
+  cpm(log=TRUE) %>% 
+  t() %>% 
+  prcomp() %>% 
+  autoplot(data = tibble(sample = rownames(.$x)) %>%
+             left_join(x$samples),
+           colour = "sex", 
+           shape = "genotype",
+           size = 6
+  ) +
+  labs(colour = "sex")
+
+
+x$counts %>% 
+  cpm(log=TRUE) %>% 
+  t() %>% 
+  prcomp() %>% 
+  autoplot(data = tibble(sample = rownames(.$x)) %>%
+             left_join(x$samples),
+           colour = "HomeTank", 
+           shape = "genotype",
+           size = 6
+  ) +
+  theme(aspect.ratio = 1) +
+  labs(colour = "HomeTank")
+
+x$counts %>% 
+  cpm(log=TRUE) %>% 
+  t() %>% 
+  prcomp() %>% 
+  autoplot(data = tibble(sample = rownames(.$x)) %>%
+             left_join(x$samples),
+           colour = "RIN", 
+           shape = "genotype",
+           size = 6
+  ) +
+  theme(aspect.ratio = 1) +
+  labs(colour = "RIN") +
+  scale_color_viridis_c()
+
+x$counts %>% 
+  cpm(log=TRUE) %>% 
+  t() %>% 
+  prcomp() %>% 
+  autoplot(data = tibble(sample = rownames(.$x)) %>%
+             left_join(x$samples),
+           colour = "group", 
+           shape = "sex",
+           #shape = "genotype",
+           size = 6
+  ) +
+  theme(aspect.ratio = 1) +
+  labs(colour = "Group") +
+  scale_color_brewer(palette = "Set2")
+```
+
+It is hard to see the separation because so many groups. So the PCA plots are repeated looking at males and fems
+
+```{r}
+fem.fish.ids <- x$samples %>% 
+  dplyr::filter(sex == "female") %>% 
+  .$sample
+
+male.fish.ids <- x$samples %>% 
+  dplyr::filter(sex == "male") %>% 
+  .$sample
+
+ggarrange(
+  x$counts[,fem.fish.ids] %>% 
+    cpm(log=TRUE) %>% 
+    t() %>% 
+    prcomp() %>% 
+    autoplot(data = tibble(sample = rownames(.$x)) %>%
+               left_join(x$samples),
+             colour = "genotype", 
+           size = 6
+  ) +
+  labs(colour = "genotype",
+         title = "By genotype") +
+  scale_color_brewer(palette = "Set2"), 
+  
+  x$counts[,fem.fish.ids] %>% 
+    cpm(log=TRUE) %>% 
+    t() %>% 
+    prcomp() %>% 
+    autoplot(data = tibble(sample = rownames(.$x)) %>%
+               left_join(x$samples),
+             colour = "treatment", 
+           size = 6
+  ) +
+    labs(colour = "treatment",
+         title = "By treatment"),
+  
+  
+  x$counts[,fem.fish.ids] %>% 
+    cpm(log=TRUE) %>% 
+    t() %>% 
+    prcomp() %>% 
+    autoplot(data = tibble(sample = rownames(.$x)) %>%
+               left_join(x$samples),
+             colour = "group", 
+             shape = "genotype",
+             size = 6
+    ) +
+    labs(colour = "Group", 
+         title = "By genotype and treatment") +
+    scale_color_brewer(palette = "Set2"), 
+  nrow = 1 
+)  
+  #ggsave("output/RNAseqPlotsFinalReport/PCA-fems.png", width = 18, height = 5, scale = 1 )  
+
+
+
+ggarrange(
+  x$counts[,male.fish.ids] %>% 
+    cpm(log=TRUE) %>% 
+    t() %>% 
+    prcomp() %>% 
+    autoplot(data = tibble(sample = rownames(.$x)) %>%
+               left_join(x$samples),
+             colour = "genotype", 
+           size = 6
+  ) +
+  labs(colour = "genotype", 
+       title = "by genotype") +
+  scale_color_brewer(palette = "Set2"), 
+  
+  x$counts[,male.fish.ids] %>% 
+    cpm(log=TRUE) %>% 
+    t() %>% 
+    prcomp() %>% 
+    autoplot(data = tibble(sample = rownames(.$x)) %>%
+               left_join(x$samples),
+             colour = "treatment", 
+           size = 6
+  ) +
+  labs(colour = "treatment", 
+       title = "by treatment"),
+  
+  x$counts[,male.fish.ids] %>% 
+  cpm(log=TRUE) %>% 
+  t() %>% 
+  prcomp() %>% 
+  autoplot(data = tibble(sample = rownames(.$x)) %>%
+             left_join(x$samples),
+           colour = "group", 
+           shape = "genotype",
+           size = 6
+  ) +
+  labs(colour = "Group", 
+       title = "By genotype and treatment") +
+  scale_color_brewer(palette = "Set2"), 
+  
+  nrow = 1 
+) 
+
+x$counts[,male.fish.ids] %>% 
+  cpm(log=TRUE) %>% 
+  t() %>% 
+  prcomp() %>% 
+  autoplot(data = tibble(sample = rownames(.$x)) %>%
+             left_join(x$samples),
+           colour = "group", 
+           shape = "genotype",
+           size = 6
+  ) +
+  theme(aspect.ratio = 1) +
+  labs(colour = "Group") +
+  scale_color_brewer(palette = "Set2")
+```
+
+No clear batch effects are observed. However. an outlier naglu heterozygous fish is possible. Will keep this in mind when looking at the differentially expressed genes and gene sets later to see if it is driving the changes to gene expression.
+
+## %GC and Length check
+
+In RNA-seq data, there is a known phenomenon of that genes can tend to be differentially expressed (DE) based on its % GC content and length. Here, I will perform an initial DE analysis using generalised linear models and likelihood ratio tests in `edgeR.`A design matrix was constructed which specifies the effect of genotype accounting for any effects of home.tank.
+
+Here robust=TRUE has been used to protect the empirical Bayes estimates against the possibility of outlier genes with exceptionally large or small individual dispersions.
+
+```{r}
+# construct a design matrix and tidy up the columnnames
+design <- model.matrix(~0 + group, 
+                       data = x$samples %>% 
+                            droplevels()) %>% # need to remove the unused factor level using droplevels
+  set_colnames(gsub(colnames(.), pattern = "group", replacement = ""))
+
+# contrasts
+contrasts <- makeContrasts(
+  
+  # females 
+  hom_control_female - het_control_female, # DEGs due to MPS IIIB geno
+  hom_iron_female - het_iron_female, # DEGs due to iron treat in homs 
+  het_iron_female - het_control_female, # effect of iron in hets
+  hom_iron_female - hom_control_female, # effect of iron in homs
+  hom_iron_female - het_control_female,  # rescue comparison
+      
+   # males
+  hom_control_male - het_control_male, # DEGs due to MPS IIIB geno
+  hom_iron_male - het_iron_male, # DEGs due to iron treat in homs 
+  het_iron_male - het_control_male, # effect of iron in hets
+  hom_iron_male - hom_control_male, # effect of iron in homs
+  hom_iron_male - het_control_male,        
+              levels = design)
+
+x %>% 
+  estimateDisp(design,  robust = TRUE) %>% 
+  plotBCV()  
+
+# fit the glm
+fit_1 <- x %>% 
+  estimateDisp(design, robust = TRUE) %>% 
+  glmFit(design)
+
+
+# call the DE genes
+toptable_1 <- colnames(contrasts) %>% 
+  sapply(function(x){
+    glmLRT(fit_1, 
+           contrast = contrasts[,x]
+    ) %>%
+      topTags(n = Inf) %>%
+      .[["table"]] %>%
+      as_tibble() %>%
+      arrange(PValue) %>%
+      mutate(
+        coef = x,
+        DE = FDR < 0.05
+      ) %>% 
+      dplyr::select(
+        gene_name, logFC, logCPM, PValue, FDR, DE, everything()  
+      )
+  }, simplify = FALSE)
+```
+
+### vis
+
+#### Number of DE genes
+
+The most DE genes are found in the iron treated homs relative to untreated hets (i.e. the rescue comparison in males).
+
+More DEGs are detected in the male MPS IIIB fish relative to the females after a vehicle control i.p. injection (blue).
+
+Many DEGs are found in the hom iron males relative to the het control males(red) and this is not replicated in females (red rectangle).
+
+```{r}
+toptable_1 %>% 
+  lapply(function(y) {
+    y %>% 
+      dplyr::filter(DE == T) %>% 
+      nrow()
+  }) %>% 
+  bind_rows() %>% 
+  as_tibble() %>% 
+  gather(key = "coef", value = "numDE") %>% 
+  mutate(sex = case_when(
+    grepl(coef, pattern = "female") ~ "female",
+    TRUE ~ "male"
+  )) %>% 
+  ggplot(aes(x = numDE, y = coef)) +
+  geom_col(aes(fill = coef)) +
+  geom_text(aes(label = numDE), 
+            size = 13, 
+            width = 1) +
+  facet_wrap(~sex, scales = "free_y") +
+  ggtitle("Number of DE genes in each comparison") +
+  # annotate(geom = "rect", fill = NA, colour = "red", 
+  #          xmin = 0, xmax = 800, 
+  #          ymin = 2.5, max = 3.5
+  #          ) +
+  # 
+  #  annotate(geom = "rect", fill = NA, colour = "blue", 
+  #          xmin = 0, xmax = 800, 
+  #          ymin = 1.5, max = 2.5
+  #          ) +
+  theme(legend.position = "none", 
+        text = element_text(size = 18, face = "bold") )  
+```
+
+#### Volcano plot
+
+```{r}
+toptable_1 %>%
+  bind_rows() %>% 
+  ggplot(aes(y = -log10(PValue), x = logFC, colour = DE)) +
+  geom_point(
+    alpha = 0.5, size = 1.25
+  ) +
+  facet_wrap(~coef) +
+  # geom_label_repel(
+  #   aes(label = gene_name),
+  #   data = .  %>% dplyr::filter(FDR < 0.05),
+  #   show.legend = FALSE
+  #   ) +
+  coord_cartesian(xlim = c(-2.5,2.5), 
+                  ylim = c(0, 20) )+
+  theme(legend.position = "none") +
+  scale_color_manual(values = c("grey50", "red")) 
+#ggsave("output/plots/volvano.png", width = 18, height = 10, units = "cm", dpi = 300, scale = 1.5)
+```
+
+#### MD plot
+
+```{r}
+toptable_1 %>%
+  bind_rows() %>% 
+  ggplot(aes(x = logCPM, y = logFC)) +
+  geom_point(
+    aes(colour = DE),
+    alpha = 0.5
+  ) +
+  facet_wrap(~coef, ncol = 1) +
+  theme(legend.position = "none") +
+  scale_color_manual(values = c("grey50", "red")) +
+  geom_smooth(se = F)
+
+```
+
+# %GC and Length
+
+These plots are zoomed in between -10 and 10 on the y-axis for vis purposes. the blue lines of best fit are a bit wonky, meaning there are some biases here for %GC and Length. Therefore, conditional quantile normailsation is required.
+
+```{r}
+ggarrange(
+  toptable_1 %>% 
+    bind_rows() %>% 
+    mutate(rankstat = sign(logFC)*-log10(PValue)) %>% 
+    ggplot(aes(x = length, y = rankstat)) +
+    geom_point(
+      aes(colour = DE),
+      alpha = 0.5
+    ) +
+    geom_smooth(se = FALSE, method = "gam") +
+    facet_grid(rows = vars(coef)) +
+    theme_bw() +
+    theme(legend.position = "none") +
+    scale_color_manual(values = c("grey50", "red")) +
+    scale_x_log10()+
+    labs(x = "Average transcript length per gene",
+         colour = "Differentially expressed?",
+         y = "sign(logFC)*-log10(PValue)") +
+    coord_cartesian(ylim = c(-2.5, 2.5)),
+  
+  toptable_1 %>% 
+    bind_rows() %>% 
+    mutate(rankstat = sign(logFC)*-log10(PValue)) %>% 
+    ggplot(aes(x = gc_content, y = rankstat)) +
+    geom_point(
+      aes(colour = DE),
+      alpha = 0.5
+    ) +
+    geom_smooth(se = FALSE, method = "gam") +
+    facet_grid(rows = vars(coef)) +
+    theme_bw() +
+    theme(legend.position = "none") +
+    scale_color_manual(values = c("grey50", "red")) +
+    coord_cartesian(ylim = c(-2.5, 2.5)) + 
+    labs(x = "Weighted average GC content (%) per gene", 
+         colour = "Differentially expressed?", 
+         y = "sign(logFC)*-log10(PValue)"),
+  common.legend = TRUE, 
+  labels = "AUTO"
+) 
+```
+
+Some biases are observed here. So need to perform CQN
+
+# CQN
 
 ```{r}
 
 ```
+
+# Gene set enrichment analysis
+
+## gene sets
+
+gene sets to use are the KEGG, Gene ontologies, cell type markers and
+IRE genes
+
+```{r}
+KEGG <- msigdbr("Danio rerio", 
+                category = "C2", 
+                subcategory = "CP:KEGG"
+                ) %>% 
+  left_join(x$genes, by = c("ensembl_gene" = "gene_id")) %>% 
+  dplyr::filter(ensembl_gene %in% rownames(x)) %>% 
+  distinct(gs_name, ensembl_gene, .keep_all = TRUE) %>% 
+  split(f = .$gs_name) %>%
+  lapply(extract2, "ensembl_gene")
+
+sizes <- KEGG %>% 
+  lapply(length) %>% 
+  unlist %>% 
+  as.data.frame() %>% 
+  set_colnames( "n_genes") %>% 
+  rownames_to_column("gs")
+
+
+# retain gene sets with at least 10 genes in it
+KEGG <- KEGG[sizes %>% dplyr::filter(n_genes > 10) %>% .$gs]
+
+
+# GO Terms
+goSummaries <- url("https://uofabioinformaticshub.github.io/summaries2GO/data/goSummaries.RDS") %>%
+  readRDS() %>%
+  mutate(
+    Term = Term(id),
+    gs_name = Term %>% str_to_upper() %>% str_replace_all("[ -]", "_"),
+    gs_name = paste0("GO_", gs_name)
+    )
+
+minPath <- 3
+
+# GO Terms
+goSummaries <- url("https://uofabioinformaticshub.github.io/summaries2GO/data/goSummaries.RDS") %>%
+  readRDS() %>%
+  mutate(
+    Term = Term(id),
+    gs_name = Term %>% str_to_upper() %>% str_replace_all("[ -]", "_"),
+    gs_name = paste0("GO_", gs_name)
+    )
+
+minPath <- 3
+
+GO <- 
+  msigdbr("Danio rerio", category = "C5") %>% 
+  dplyr::filter(grepl(gs_name, pattern = "^GO")) %>% 
+  left_join(x$genes, by = c("gene_symbol" = "gene_name")) %>% 
+  dplyr::filter(gene_id %in% rownames(x)) %>% 
+  mutate(gs_name = str_replace(gs_name, pattern = "GOBP_", replacement = "GO_")) %>% 
+  mutate(gs_name = str_replace(gs_name, pattern = "GOMF_", replacement = "GO_")) %>%     
+  mutate(gs_name = str_replace(gs_name, pattern = "GOCC_", replacement = "GO_")) %>%     
+  left_join(goSummaries) %>% 
+  dplyr::filter(shortest_path >= minPath) %>%
+  distinct(gs_name, gene_id, .keep_all = TRUE) %>% 
+  split(f = .$gs_name) %>%
+  lapply(extract2, "gene_id")
+ 
+sizes_GO <- GO %>%
+  lapply(length) %>%
+  unlist %>%
+  as.data.frame() %>%
+  set_colnames( "n_genes") %>%
+  rownames_to_column("gs")
+
+
+# retain gene sets with at least 5 genes in it
+GO <- GO[sizes_GO %>% dplyr::filter(n_genes > 5) %>% .$gs]
+
+# cell types
+
+cell_type_markers <- 
+  read_xlsx("data/RNAseq/gene_sets/Suppdata2_jiangetal_2021_fcelldev.xlsx", sheet = "Brain") %>% 
+  dplyr::rename("gene_name" = gene) %>% 
+  left_join(x$genes) %>% 
+  dplyr::filter(gene_id %in% rownames(x)) %>% 
+  split(f = .$`cell type`) %>% 
+  lapply(extract2, "gene_id")
+
+
+cell_type_markers %<>% 
+  lapply(function(y) {
+    y[y %in% rownames(x)]
+  })
+
+ire <- read_rds("data/RNAseq/gene_sets/zebrafishIreGenes.rds") %>% 
+  lapply(function(y) {
+    y %>% 
+      as.data.frame() %>% 
+      set_colnames("temp") %>% 
+      dplyr::filter(temp %in% rownames(x)) %>% 
+      .$temp
+  })
+```
+
+## GOSEQ
+
+First, I will detect the GO terms sig. over represented in the DEGs
+using goseq.
+
+Only the males are showing sig. over-represented GO tersm
+
+```{r}
+# make an object containing the prob. weight function, which adjsysts for average tx length
+pwfs <- toptable_1 %>% 
+  lapply(function(y) {
+    y %>% 
+      with(
+        nullp(
+          DEgenes = structure(DE, names = gene_id), 
+          bias.data = length
+        )
+  )
+  })
+  
+# run goseq on the GO terms
+goseqResults <- 
+  pwfs %>% 
+  sapply(function(y) {
+    goseq(y, gene2cat = GO) %>% 
+      as_tibble() %>% 
+      dplyr::filter(numDEInCat > 0) %>% 
+      mutate(FDR = p.adjust(over_represented_pvalue, method = "fdr")) %>% 
+      dplyr::select(-under_represented_pvalue) 
+  }, simplify = FALSE)
+
+# add the names to the goseq file
+mynames <- names(goseqResults)
+goseqResults <- map2(goseqResults, mynames, ~.x %>% mutate(coef = .y))
+```
+
+First, will plot th numebr of GO terms
+
+```{r}
+goseqResults %>% 
+  lapply(function(x) {
+    x %>% 
+      dplyr::filter(FDR < 0.05)
+  }) %>% 
+  lapply(nrow) %>% 
+  as.data.frame() %>% 
+  pivot_longer(names_to = "coef", values_to = "numGo", everything()) %>% 
+  ggplot(aes(x = numGo, y = coef)) +
+  geom_col() + 
+  geom_label(aes(label = numGo), colour = "red") +
+  ggtitle("Number of sig GO terms in each contrast")
+```
+
+Now want to plot which GO terms are over-rep in the male mutants
+relative to wt
+
+```{r}
+# extract the sig GO terms 
+sig.GOs <- goseqResults %>% 
+  bind_rows() %>% 
+  dplyr::filter(FDR < 0.05) %>% 
+  .$category %>% 
+  unique
+
+
+# plot the results 
+goseqResults$`hom_control_male - het_control_male` %>% 
+  dplyr::filter(FDR < 0.05) %>% 
+  mutate(propDE =  numDEInCat*100 / numInCat ) %>% 
+  ggplot(aes(x = -log10(over_represented_pvalue), 
+             y = reorder(category, -over_represented_pvalue), 
+             fill = propDE
+             )
+         ) +
+  geom_col() +
+  scale_fill_viridis_c() +
+  labs(title = "hom_control_male - het_control_male", 
+       fill = "Proportion of GO\ncontaining DEGs (%)")
+
+# top 20 GOs
+goseqResults[c("hom_control_female - het_control_female", 
+  "hom_control_male - het_control_male",
+  "hom_iron_female - het_control_female",
+  "hom_iron_male - het_control_male")] %>% 
+  lapply(function(y){
+    y %>% 
+      head(10)
+  }) %>% 
+  bind_rows() %>% 
+  mutate(sex = case_when(
+    grepl(coef, pattern = "_male") ~ "male", 
+    grepl(coef, pattern = "_female") ~ "female" 
+  ), 
+  category = str_replace_all(category, pattern = "_", replacement = " "),
+  category = str_remove(category, pattern = "GO "), 
+  category = str_wrap(category, width = 30) ) %>% 
+  ggplot(aes(x = -log10(over_represented_pvalue), 
+             y = reorder(category, -FDR),
+             fill = FDR < 0.05)) +
+  geom_col() +
+  facet_wrap(~sex+coef, 
+             nrow=1,
+             scales = "free_y") +
+  scale_fill_manual(values = c("grey50", "red")) +
+  theme(legend.position = "top", 
+        text = element_text(size = 18)) 
+   #ggsave("output/RNAseqPlotsFinalReport/GOterms.png", width = 30, height = 8, scale =  1)
+
+
+```
+
+```{r}
+x %>% 
+  cpm(log=T) %>% 
+  .[GO$GO_MITOTIC_CELL_CYCLE_PROCESS ,] %>% 
+  .[,male.fish.ids] %>% 
+  pheatmap(
+     main = "GO_MITOTIC_CELL_CYCLE_PROCESS ",
+    scale = "row",
+    clustering_method = "complete",
+    show_rownames = F, 
+    treeheight_row = 0, 
+    annotation_col = x$samples %>% 
+      dplyr::select(genotype, treatment, sex), 
+    annotation_colors = list(
+      genotype = c(het = "yellow", 
+                   hom ="orange"),
+      treatment = c(`0.85% saline`= "white", 
+                    `10 µg Fe-citrate` ="black"),
+      sex = c(male = "blue", 
+              female = "red")
+    )
+  )
+
+x %>% 
+  cpm(log=T) %>% 
+  .[GO$	GO_AMINO_SUGAR_CATABOLIC_PROCESS ,] %>% 
+  .[,male.fish.ids] %>% 
+  pheatmap(
+    main = "	GO_AMINO_SUGAR_CATABOLIC_PROCESS ",
+    color = colorRampPalette(rev(brewer.pal(n = 7, name = "RdBu")))(100),
+    scale = "row",
+    clustering_method = "complete",
+    show_rownames = T, 
+    treeheight_row = 0, 
+    annotation_col = x$samples %>% 
+      dplyr::select(genotype, treatment, sex), 
+    annotation_colors = list(
+      genotype = c(het = "yellow", 
+                   hom ="orange"),
+      treatment = c(`0.85% saline`= "white", 
+                    `10 µg Fe-citrate` ="black"),
+      sex = c(male = "blue", 
+              female = "red")
+    )
+  )
+```
+
+```{r}
+goseqResults$`hom_iron_male - het_control_male` %>% 
+  dplyr::filter(FDR < 0.05) %>% 
+  mutate(propDE =  numDEInCat*100 / numInCat ) %>% 
+  head(50) %>% 
+  ggplot(aes(x = -log10(over_represented_pvalue), 
+             y = reorder(category, -over_represented_pvalue), 
+             fill = propDE
+             )
+         ) +
+  geom_col() +
+  scale_fill_viridis_c() +
+  labs(title = "Top 50 hom_iron_male - het_control_male", 
+       fill = "Proportion of GO\ncontaining DEGs (%)")
+
+```
+
+```{r}
+x %>% 
+  cpm(log=T) %>% 
+  .[GO$GO_INTERLEUKIN_27_MEDIATED_SIGNALING_PATHWAY ,] %>% 
+  .[,male.fish.ids] %>% 
+  pheatmap(
+    main = "	GO_INTERLEUKIN_27_MEDIATED_SIGNALING_PATHWAY ",
+    color = colorRampPalette(rev(brewer.pal(n = 7, name = "RdBu")))(100),
+    scale = "row",
+    clustering_method = "complete",
+    show_rownames = T, 
+    treeheight_row = 0, 
+    annotation_col = x$samples %>% 
+      dplyr::select(genotype, treatment, sex), 
+    annotation_colors = list(
+      genotype = c(het = "yellow", 
+                   hom ="orange"),
+      treatment = c(`0.85% saline`= "white", 
+                    `10 µg Fe-citrate` ="black"),
+      sex = c(male = "blue", 
+              female = "red")
+    )
+  )
+
+x %>% 
+  cpm(log = T) %>% 
+  .[GO$GO_INTERLEUKIN_27_MEDIATED_SIGNALING_PATHWAY,] %>% 
+  as.data.frame() %>% 
+  rownames_to_column("gene_id") %>% 
+  left_join(x$genes) %>% 
+  pivot_longer(names_to = "fish_id", values_to = "logCPM", cols %in% seq(1:100))
+  
+  ggplot(aes(x = genotype, y = logCPM)) + 
+  geom_jitter(aes(colour = genotype)) + 
+  geom_boxplot(aes(fill = genotype), 
+               alpha = 0.5, 
+               outlier.colour = NA) + 
+  facet_grid(cols = vars(treatment), rows = vars(sex)) +
+  theme_bw()
+```
+
+Looks like there
+
+## fry KEGG gene sets
+
+```{r}
+fry.kegg <- colnames(contrasts) %>% 
+  sapply(function(y) {
+    x %>% 
+      estimateDisp(design, robust = TRUE) %>% 
+      fry(
+        index = KEGG,
+        design = design, 
+        contrast = contrasts[,y], 
+        sort = "mixed"
+      ) %>% 
+      rownames_to_column("pathway") %>% 
+      as_tibble() %>% 
+      mutate(coef = y)
+  }, simplify = FALSE)
+```
+
+## plot the number of KEGG genes sets altered
+
+```{r}
+fry.kegg[c("hom_control_female - het_control_female", 
+  "hom_control_male - het_control_male",
+  "hom_iron_female - het_control_female",
+  "hom_iron_male - het_control_male")] %>% 
+  lapply(function(x) {
+    x %>% 
+      dplyr::filter(FDR.Mixed < 0.05)
+  }) %>% 
+  lapply(nrow) %>% 
+  as.data.frame() %>% 
+  pivot_longer(names_to = "coef", values_to = "numKEGG", everything()) %>% 
+  ggplot(aes(x = numKEGG, y = coef)) +
+  geom_col() + 
+  geom_label(aes(label = numKEGG), colour = "red") +
+  labs(x = "Number of  KEGG gene sets with FDR < 0.05", 
+       y = "Contrast") +
+  theme(text = element_text(size = 18)) 
+  #ggsave("output/RNAseqPlotsFinalReport/numKEGG.png", width = 10, height = 5)
+```
+
+# top 10 gene sets
+
+```{r}
+fry.kegg[c("hom_control_female - het_control_female", 
+  "hom_control_male - het_control_male",
+  "hom_iron_female - het_control_female",
+  "hom_iron_male - het_control_male")] %>% 
+  lapply(function(y){
+    y %>% 
+      head(10)
+  }) %>% 
+  bind_rows() %>% 
+  mutate(sex = case_when(
+    grepl(coef, pattern = "_male") ~ "male", 
+    grepl(coef, pattern = "_female") ~ "female" 
+  ), 
+  pathway = str_replace_all(pathway, pattern = "_", replacement = " "),
+  pathway = str_remove(pathway, pattern = "KEGG "), 
+  pathway = str_wrap(pathway, width = 30)
+  ) %>% 
+  ggplot(aes(x = -log10(PValue.Mixed), 
+             y = pathway,
+             fill = FDR.Mixed < 0.05)) +
+  geom_col() +
+  facet_wrap(~sex+coef, 
+             nrow=1,
+             scales = "free_y") +
+  scale_fill_manual(values = c("grey50", "red")) +
+  theme(legend.position = "top", 
+        text = element_text(size = 18)) 
+  #ggsave("output/RNAseqPlotsFinalReport/top10KEGG.png", width = 30, height = 10)
+```
+
+```{r}
+
+sigpaths_all <- fry.kegg %>% 
+  bind_rows() %>% 
+  dplyr::filter(FDR.Mixed < 0.05) %>% 
+  .$pathway %>% 
+  unique
+
+# males 
+sigpaths_males <- 
+  fry.kegg %>% 
+  bind_rows() %>% 
+  dplyr::filter(grepl(coef, pattern = "_male")) %>% 
+  dplyr::filter(FDR.Mixed < 0.05) %>% 
+  head(20) %>% 
+  .$pathway %>% 
+  unique
+
+
+fry.kegg %>% 
+  bind_rows() %>% 
+  dplyr::filter(grepl(coef, pattern = "_male")) %>% 
+  dplyr::filter(pathway %in% sigpaths_males) %>% 
+  ggplot(aes(x = coef, y =  pathway, fill = FDR.Mixed)) +
+  geom_tile() +
+  scale_fill_viridis_c(direction = -1, option = "magma") +
+  easy_rotate_labels(which = "x", angle = -45)
+
+# females
+sigpaths_females <- 
+  fry.kegg %>% 
+  bind_rows() %>% 
+  dplyr::filter(grepl(coef, pattern = "_female")) %>% 
+  dplyr::filter(FDR.Mixed < 0.05) %>% 
+  .$pathway %>% 
+  unique
+
+
+fry.kegg %>% 
+  bind_rows() %>% 
+  dplyr::filter(grepl(coef, pattern = "_female")) %>% 
+  dplyr::filter(pathway %in% sigpaths_females) %>% 
+  ggplot(aes(x = coef, y =  pathway, fill = FDR.Mixed)) +
+  geom_tile() +
+  scale_fill_viridis_c(direction = -1, option = "magma") +
+  easy_rotate_labels(which = "x", angle = -45)
+
+```
+
+```{r}
+anno <- x$samples %>% 
+  dplyr::select(fish_id, treatment2, genotype, sex) %>% 
+  remove_rownames() %>% 
+  column_to_rownames("fish_id")
+
+cpm(x, log = T) %>% 
+  .[cell_type_markers$Oligodendrocyte,] %>% 
+  as.data.frame() %>% 
+  pheatmap(annotation_col = anno, 
+           scale = "column")
+
+#png("output/RNAseqPlotsFinalReport/KEGG_ANTIGEN_PROCESSING_AND_PRESENTATION.png", width = 20, height = 20, 
+    #units = "cm", res = 300)
+toptable_1 %>% 
+  bind_rows() %>% 
+    dplyr::filter(gene_id %in% KEGG$KEGG_ANTIGEN_PROCESSING_AND_PRESENTATION) %>% 
+  dplyr::filter(coef %in% c(
+    "hom_control_female - het_control_female", # DEGs due to MPS IIIB geno
+    "hom_iron_female - het_control_female",  # rescue comparison
+    
+    "hom_control_male - het_control_male", # DEGs due to MPS IIIB geno
+    "hom_iron_male - het_control_male"
+  )) %>% 
+  dplyr::select(gene_name, logFC, coef) %>% 
+  dplyr::distinct(gene_name, coef, .keep_all = TRUE) %>% 
+  spread(key = "coef", value = "logFC") %>% 
+  column_to_rownames("gene_name") %>% 
+  dplyr::select("hom_control_female - het_control_female",
+                "hom_iron_female - het_control_female",  # rescue comparison
+                
+                "hom_control_male - het_control_male", # DEGs due to MPS IIIB geno
+                "hom_iron_male - het_control_male"
+                ) %>% 
+  t %>% 
+  pheatmap(angle = 315, 
+           colorRampPalette(rev(brewer.pal(n = 5,
+                                                   name = "RdBu")))(100), 
+           breaks = seq(from = -1, to = 1, length.out = 100),
+           fontsize = 8,
+           cluster_rows = F,
+           cellheight = 15,
+           gaps_row = 2, 
+           main= "KEGG_ANTIGEN_PROCESSING_AND_PRESENTATION"
+           )
+  #dev.off()
+
+
+toptable_1 %>% 
+  bind_rows() %>% 
+  dplyr::filter(gene_id %in% GO$GO_IRON_ION_HOMEOSTASIS) %>% 
+  dplyr::filter(coef %in% c(
+    "hom_control_female - het_control_female", # DEGs due to MPS IIIB geno
+    "hom_iron_female - het_control_female",  # rescue comparison
+    
+    "hom_control_male - het_control_male", # DEGs due to MPS IIIB geno
+    "hom_iron_male - het_control_male"
+  )) %>% 
+  dplyr::select(gene_name, logFC, coef) %>% 
+  dplyr::distinct(gene_name, coef, .keep_all = TRUE) %>% 
+  spread(key = "coef", value = "logFC") %>% 
+  dplyr::select(contains("female"), contains("male"), everything()) %>% 
+  column_to_rownames("gene_name") %>% 
+  
+  pheatmap(angle = 315, 
+           colorRampPalette(rev(brewer.pal(n = 5,
+                                           name = "RdBu")))(100), 
+           breaks = seq(from = -2, to = 2, length.out = 100),
+           fontsize = 6, 
+           cluster_cols = F, 
+           gaps_col = 2
+  )
+```
+
+# IRE gene sets
+
+```{r}
+fry.ire <- colnames(contrasts) %>% 
+  sapply(function(y) {
+    x %>% 
+      estimateDisp(design, robust = TRUE) %>% 
+      fry(
+        index = ire,
+        design = design, 
+        contrast = contrasts[,y], 
+        sort = "mixed"
+      ) %>% 
+      rownames_to_column("pathway") %>% 
+      as_tibble() %>% 
+      mutate(coef = y)
+  }, simplify = FALSE)
+```
+
+```{r}
+fry.ire[c(
+    "hom_control_female - het_control_female", # DEGs due to MPS IIIB geno
+    "hom_iron_female - het_control_female",  # rescue comparison
+    
+    "hom_control_male - het_control_male", # DEGs due to MPS IIIB geno
+    "hom_iron_male - het_control_male"
+)] %>% 
+  bind_rows() %>% 
+  mutate(sex = case_when(
+    grepl(coef, pattern = "_male") ~ "male", 
+    grepl(coef, pattern = "_female") ~ "female" 
+  )) %>% 
+  ggplot(aes(x = pathway, y = coef)) +
+  geom_tile(aes(fill = FDR.Mixed)) +
+  geom_label(aes(label = signif(FDR.Mixed, digits = 2))) +
+  scale_fill_viridis_c(option = "inferno", 
+                       direction = -1)+
+  facet_wrap(~sex, 
+             ncol = 1,
+             scales = "free_y") 
+  ggsave("output/RNAseqPlotsFinalReport/IREpval.png", width = 7, height = 5)
+
+
+fry.ire[c(
+    "het_iron_female - het_control_female", # DEGs due to MPS IIIB geno
+    "hom_iron_female - hom_control_female",  # rescue comparison
+    
+    "het_iron_male - het_control_male", # DEGs due to MPS IIIB geno
+    "hom_iron_male - hom_control_male"
+)] %>% 
+  bind_rows() %>% 
+  mutate(sex = case_when(
+    grepl(coef, pattern = "_male") ~ "male", 
+    grepl(coef, pattern = "_female") ~ "female" 
+  )) %>% 
+  ggplot(aes(x = pathway, y = coef)) +
+  geom_tile(aes(fill = FDR.Mixed)) +
+  geom_label(aes(label = signif(FDR.Mixed, digits = 2))) +
+  scale_fill_viridis_c(option = "inferno", 
+                       direction = -1
+                        )+
+  facet_wrap(~sex, 
+             ncol = 1,
+             scales = "free_y") 
+   #ggsave("output/RNAseqPlotsFinalReport/IREpvals effect of iron.png", width = 7, height = 5)
+```
+
+# plot out expression changes
+
+```{r}
+toptable_1 %>% 
+  bind_rows() %>% 
+    dplyr::filter(gene_id %in% ire$ire3_hq) %>% 
+  dplyr::filter(coef %in% c(
+    "hom_control_female - het_control_female", # DEGs due to MPS IIIB geno
+    "hom_iron_female - het_control_female",  # rescue comparison
+    
+    "hom_control_male - het_control_male", # DEGs due to MPS IIIB geno
+    "hom_iron_male - het_control_male", 
+  
+     "het_iron_female - het_control_female", # DEGs due to MPS IIIB geno
+    "hom_iron_female - hom_control_female",  # rescue comparison
+    
+    "het_iron_male - het_control_male", # DEGs due to MPS IIIB geno
+    "hom_iron_male - hom_control_male"  
+    
+  )) %>% 
+  dplyr::select(gene_name, logFC, coef) %>% 
+  dplyr::distinct(gene_name, coef, .keep_all = TRUE) %>% 
+  spread(key = "coef", value = "logFC") %>% 
+  column_to_rownames("gene_name") %>% 
+  dplyr::select("hom_control_female - het_control_female",
+                "hom_iron_female - het_control_female",  # rescue comparison
+
+                "hom_control_male - het_control_male", # DEGs due to MPS IIIB geno
+                "hom_iron_male - het_control_male", 
+                
+                "het_iron_female - het_control_female", # DEGs due to MPS IIIB geno
+                "hom_iron_female - hom_control_female",  # rescue comparison
+                
+                "het_iron_male - het_control_male", # DEGs due to MPS IIIB geno
+                "hom_iron_male - hom_control_male"  
+    
+                ) %>%
+  t %>% 
+  pheatmap(angle = 315, 
+           colorRampPalette(rev(brewer.pal(n = 5,
+                                                   name = "RdBu")))(100), 
+           breaks = seq(from = -1, to = 1, length.out = 100),
+           fontsize = 8,
+           cluster_rows = F,
+           cellheight = 15,
+           gaps_row = c(2,2,4,4, 6,6),
+           #main= "KEGG_ANTIGEN_PROCESSING_AND_PRESENTATION"
+           )
+```
+
+# cell types
+
+```{r}
+fry.cell <- colnames(contrasts) %>% 
+  sapply(function(y) {
+    x %>% 
+      estimateDisp(design, robust = TRUE) %>% 
+      fry(
+        index = cell_type_markers,
+        design = design, 
+        contrast = contrasts[,y], 
+        sort = "mixed"
+      ) %>% 
+      rownames_to_column("pathway") %>% 
+      as_tibble() %>% 
+      mutate(coef = y)
+  }, simplify = FALSE)
+```
+
+## plot out results as a heat
+
+```{r}
+fry.cell[
+  c("hom_control_female - het_control_female", # DEGs due to MPS IIIB geno
+    "hom_iron_female - het_control_female",  # rescue comparison
+    
+    "hom_control_male - het_control_male", # DEGs due to MPS IIIB geno
+    "hom_iron_male - het_control_male")
+  ] %>% 
+
+ bind_rows() %>% 
+  mutate(sex = case_when(
+    grepl(coef, pattern = "_male") ~ "male", 
+    grepl(coef, pattern = "_female") ~ "female" 
+  ), 
+  pathway = str_wrap(pathway, width = 30)
+  ) %>% 
+   ggplot(aes(y = pathway,
+              x = coef)) +
+  geom_tile(aes(fill = FDR.Mixed)) +
+  geom_label(aes(label = signif(FDR.Mixed, digits = 2))) +
+  scale_fill_viridis_c(option = "inferno", 
+                       direction = -1)+
+  facet_wrap(~sex, 
+             nrow = 1,
+             scales = "free_x") +
+  theme(axis.text.x = element_text(angle = -15, hjust = 0, vjust = 1, size = 18), 
+        text = element_text(size = 18)) 
+  #ggsave("output/RNAseqPlotsFinalReport/celltype heatmap.png", width = 15, height = 20, scale = 0.75)
+```
+
+# output for geo
+
+```{r}
+featureCounts %>% 
+  rownames_to_column("gene_id") %>% 
+  write_csv("output/RNA-seqCounts.csv")
+
+```
+
+<!-- ```{r} -->
+
+<!-- camera <- colnames(contrasts) %>%  -->
+
+<!--   sapply(function(y) { -->
+
+<!--     x %>%  -->
+
+<!--       estimateDisp(design, robust = TRUE) %>%  -->
+
+<!--       camera( -->
+
+<!--         index = KEGG, -->
+
+<!--         design = design,  -->
+
+<!--         contrast = contrasts[,y] -->
+
+<!--       ) %>%  -->
+
+<!--       rownames_to_column("pathway") %>%  -->
+
+<!--       as_tibble() %>%  -->
+
+<!--       mutate(coef = y) -->
+
+<!--   }, simplify = FALSE) -->
+
+<!-- sigpaths_camera <-  -->
+
+<!--   camera %>%  -->
+
+<!--   bind_rows() %>%  -->
+
+<!--   dplyr::filter(FDR < 0.05) %>%  -->
+
+<!--   .$pathway %>%  -->
+
+<!--   unique -->
+
+<!-- camera %>%  -->
+
+<!--   bind_rows() %>%  -->
+
+<!--   #dplyr::filter(grepl(coef, pattern = "_female")) %>%  -->
+
+<!--   dplyr::filter(pathway %in% sigpaths_camera) %>%  -->
+
+<!--   ggplot(aes(x = coef, y =  pathway, fill = FDR)) + -->
+
+<!--   geom_tile() + -->
+
+<!--   scale_fill_viridis_c(direction = -1, option = "magma") + -->
+
+<!--   easy_rotate_labels(which = "x", angle = -45) -->
+
+<!-- # only males -->
+
+<!-- sigpaths_camera_males <- -->
+
+<!--   camera %>%  -->
+
+<!--   bind_rows() %>%  -->
+
+<!--   dplyr::filter(FDR < 0.05) %>%  -->
+
+<!--   dplyr::filter(grepl(coef, pattern = "_male")) %>%  -->
+
+<!--   .$pathway %>%  -->
+
+<!--   unique -->
+
+<!-- camera %>%  -->
+
+<!--   bind_rows() %>%  -->
+
+<!--   dplyr::filter(grepl(coef, pattern = "_male")) %>%  -->
+
+<!--   dplyr::filter(pathway %in% sigpaths_camera_males) %>%  -->
+
+<!--   ggplot(aes(x = coef, y =  pathway, fill = FDR)) + -->
+
+<!--   geom_tile(aes(alpha = FDR < 0.05)) + -->
+
+<!--   scale_fill_viridis_c(direction = -1, option = "magma") + -->
+
+<!--   easy_rotate_labels(which = "x", angle = -45) + -->
+
+<!--   scale_alpha_manual(values = c(0,1)) -->
+
+<!-- sigpathscam.contofinterest <- camera %>%  -->
+
+<!--   bind_rows() %>%  -->
+
+<!--   dplyr::filter(coef %in% c( -->
+
+<!--      "hom_control_female - het_control_female", # DEGs due to MPS IIIB geno -->
+
+<!--   "hom_iron_female - het_control_female",  # rescue comparison -->
+
+<!--    "hom_control_male - het_control_male", # DEGs due to MPS IIIB geno -->
+
+<!--    "hom_iron_male - het_control_male" -->
+
+<!--   )) %>%  -->
+
+<!--   dplyr::filter(FDR < 0.05) %>%  -->
+
+<!--   .$pathway %>%  -->
+
+<!--   unique() -->
+
+<!-- camera %>%  -->
+
+<!--   bind_rows() %>%  -->
+
+<!--   dplyr::filter(coef %in% c( -->
+
+<!--      "hom_control_female - het_control_female", # DEGs due to MPS IIIB geno -->
+
+<!--   "hom_iron_female - het_control_female",  # rescue comparison -->
+
+<!--    "hom_control_male - het_control_male", # DEGs due to MPS IIIB geno -->
+
+<!--    "hom_iron_male - het_control_male" -->
+
+<!--   )) %>%  -->
+
+<!-- dplyr::filter(pathway %in% sigpathscam.contofinterest) %>%  -->
+
+<!--   ggplot(aes(x = coef, y =  pathway, fill = FDR)) + -->
+
+<!--   geom_tile(aes(alpha = FDR < 0.05)) + -->
+
+<!--   scale_fill_viridis_c(direction = -1, option = "magma") + -->
+
+<!--   easy_rotate_labels(which = "x", angle = -45) + -->
+
+<!--   scale_alpha_manual(values = c(0,1)) -->
+
+<!-- ``` -->
+
+<!-- # looking at some individual genes -->
+
+<!-- ```{r} -->
+
+<!-- toptable_1 %>%  -->
+
+<!--   bind_rows() %>%  -->
+
+<!--   dplyr::filter(gene_name == "tfr1a") %>% view -->
+
+<!--   mutate(sex = case_when( -->
+
+<!--     grepl(coef, pattern = "female") ~ "female",  -->
+
+<!--     grepl(coef, pattern = "_male") ~ "male" -->
+
+<!--   )) %>% .$gene_id -->
+
+<!--   ggplot(aes(x = logFC, y = coef)) + -->
+
+<!--   geom_col(aes(fill = DE)) +  -->
+
+<!--   facet_wrap(~sex, scales = "free_y")  -->
+
+<!-- ggarrange( -->
+
+<!--   x %>%  -->
+
+<!--   cpm(log = T) %>%  -->
+
+<!--   .["ENSDARG00000101322",] %>%  -->
+
+<!--   as.data.frame() %>%  -->
+
+<!--   rownames_to_column("fish_id") %>%  -->
+
+<!--   set_colnames(c("fish_id", "logCPM")) %>%  -->
+
+<!--   left_join(x$samples) %>%  -->
+
+<!--   ggplot(aes(x = genotype, y = logCPM)) +  -->
+
+<!--   geom_jitter(aes(colour = genotype)) +  -->
+
+<!--   geom_boxplot(aes(fill = genotype),  -->
+
+<!--                alpha = 0.5,  -->
+
+<!--                outlier.colour = NA) +  -->
+
+<!--   facet_grid(cols = vars(treatment), rows = vars(sex)) + -->
+
+<!--   theme_bw() + -->
+
+<!--   ggtitle("tfr1a"),  -->
+
+<!--     x %>%  -->
+
+<!--   cpm(log = T) %>%  -->
+
+<!--   .["ENSDARG00000077372",] %>%  -->
+
+<!--   as.data.frame() %>%  -->
+
+<!--   rownames_to_column("fish_id") %>%  -->
+
+<!--   set_colnames(c("fish_id", "logCPM")) %>%  -->
+
+<!--   left_join(x$samples) %>%  -->
+
+<!--   ggplot(aes(x = genotype, y = logCPM)) +  -->
+
+<!--   geom_jitter(aes(colour = genotype)) +  -->
+
+<!--   geom_boxplot(aes(fill = genotype),  -->
+
+<!--                alpha = 0.5,  -->
+
+<!--                outlier.colour = NA) +  -->
+
+<!--   facet_grid(cols = vars(treatment), rows = vars(sex)) + -->
+
+<!--   theme_bw() + -->
+
+<!--   ggtitle("tfr1b"),  -->
+
+<!--   common.legend = T -->
+
+<!-- ) + -->
+
+<!--   ggsave("output/RNAseqPlotsFinalReport/tfr1ab.png") -->
+
+<!-- ``` -->
 
