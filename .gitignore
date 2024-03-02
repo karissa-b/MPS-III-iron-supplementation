@@ -9,3 +9,5 @@ analysis/*png
 analysis/*html
 analysis/*_cache
 analysis/site_libs
+data/ymaze/metabolomics_fam/tracking_videos/*
+data/ymaze/*/videos/*

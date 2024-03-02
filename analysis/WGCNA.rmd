@@ -1,0 +1,727 @@
+---
+title: "WGCNA"
+author: "Karissa Barthelson"
+date: "2024-02-24"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: console
+---
+```{r}
+library(tidyverse)
+library(magrittr)
+library(readxl)
+
+# vis
+library(pander)
+library(kableExtra)
+library(UpSetR)
+library(scales)
+library(pheatmap)
+library(ggpubr)
+library(ggrepel)
+library(ggfortify)
+library(ggforce)
+library(RColorBrewer)
+library(colorspace)
+library(igraph)
+
+# analysis
+library(WGCNA)
+library(topGO)
+library(org.Dr.eg.db)
+library(clusterProfiler)
+library(msigdbr)
+library(matrixStats)
+
+theme_set(theme_classic())
+options(stringsAsFactors = FALSE)
+allowWGCNAThreads()  
+```
+
+# Introduction
+
+The WGCNA R package builds "weighted gene correlation networks for
+analysis" from expression data. It was originally published in 2008 and
+cited as the following:
+
+-   Langfelder, P. and Horvath, S., 2008. WGCNA: an R package for
+    weighted correlation network analysis. BMC bioinformatics, 9(1),
+    p.559.
+
+-   Zhang, B. and Horvath, S., 2005. A general framework for weighted
+    gene co-expression network analysis. Statistical applications in
+    genetics and molecular biology, 4(1).
+
+Genes which are co-expressed show similar changes across samples and are assuminlgy functionally related. This method does not rely on pre-defined gene sets. Rather, it clusters genes based on their
+similarity into modules. These modules of genes can then be subjected to enrichment analysis to identify what they comprise of. They can represent pathways or functions that we already know about. However,
+they can also represent new biological pathways or processes.
+
+Here, I will perform WGNCA to identify what modules/clusters are associated with genotype, treatment and/or sex. WGCNA needs normalised data. I have already done this using the TMM method + CQN. The data was already filtered for lowly expressed genes as well. I will import these objects from the previous analyses in [RNA_seq](RNA_seq.html) doc.
+
+```{r}
+# read in data 
+x <- readRDS("data/RNAseq/R-objects/x_dgeObject_withCQNoffset.rds")
+
+# CQN adjusted logCPM
+logCPM <- readRDS("data/RNAseq/R-objects/logCPM_CQN")
+
+
+```
+
+```{r, fig.cap="LogCPM values after TMM and CQN normalisation. All samples appear to have similar distributions"}
+# plot the TMM/CQN normalised data 
+logCPM %>% 
+  as.data.frame() %>% 
+  rownames_to_column("gene_id") %>% 
+  pivot_longer(
+    names_to = "sample", 
+    values_to = "logCPM", 
+    colnames(x)
+  ) %>% 
+  left_join(x$samples) %>% 
+  ggplot(
+    aes(x = sample, y = logCPM, 
+        fill = genotype), 
+    size = 1
+    ) +
+  geom_boxplot()+
+  facet_wrap(~treatment+sex+genotype, scales = "free_x", 
+             nrow = 1) +
+  theme(
+    axis.text.x = element_text(angle = -45, hjust = 0))
+
+```
+
+# prepare data for WGCNA
+
+Genes that do not vary across samples are not informative in network analysis, and will increase the noise. So I will only retain the top 75% most variable genes in the dataset 
+
+```{r}
+# Retain genes with sufficiently high variation in expression across all samples.
+# Here we define sufficiently high variation as having a standard deviation above the 25th quantile (so not in bottom 25%).
+variableGenes <- rowSds(logCPM) >  quantile(rowSds(logCPM), 0.25)
+
+# plot distributions before and after filtering
+
+ggarrange(
+  logCPM %>% 
+  as.data.frame() %>% 
+  rownames_to_column("gene_id") %>%
+  pivot_longer(
+    names_to = "fish_id", 
+    values_to = "logCPM", 
+    colnames(x)
+  ) %>% 
+  left_join(x$samples) %>% 
+  ggplot(aes(x = logCPM, colour = group)) +
+  geom_density() + 
+  ggtitle("Before filtering lowly variable genes"), 
+  
+  logCPM %>% 
+  extract(variableGenes,) %>% 
+  as.data.frame() %>% 
+  rownames_to_column("gene_id") %>%
+  pivot_longer(
+    names_to = "fish_id", 
+    values_to = "logCPM", 
+    colnames(x)
+  ) %>% 
+  left_join(x$samples) %>% 
+  #filter(is.finite(value)) %>% 
+  ggplot(aes(x = logCPM, colour = group)) +
+  geom_density() + 
+  ggtitle("After filtering lowly ariable genes"), 
+  common.legend = TRUE, 
+  legend = "bottom"
+)
+```
+
+```{r}
+logCPM.filtered <- logCPM[variableGenes,] 
+```
+
+After filtering, there will be `r dim(logCPM.filtered)[1]` genes retained from the original `r dim(logCPM)[1]` genes. 
+
+The WGCNA pipeline is expecting an input matrix of RNAseq data (counts). Usually we need to rotate (transpose) the input data so `rows = samples` and `columns = gene counts`. So this is done here. An example of the first 5 rows is show here. 
+
+```{r}
+# transpose the data 
+input_mat = t(logCPM.filtered)
+
+# print the first 5 rows as an example
+input_mat[1:5,1:5]  %>% 
+  pander()
+```
+
+# check sample clustering
+
+Here we use the gene expression patterns after normalisation to build a sample dendrogram (sample tree), and check how the `traits` (e.g. metadata) related to the sample dendrogram.
+
+Traits uses a design matrix as described in the previous DE genes analysis.
+
+```{r, fig.cap="No obvious outliers are observed here"}
+# Apply hierarchial clustering to the gene exp data. 
+sampleTree <- hclust(dist(input_mat), method = "complete")
+
+# Using the design matrix, which contains information of samples' sex and genotype
+traits <-  
+  model.matrix(~sex + genotype + treatment + genotype*treatment, x$samples) %>%
+  as.data.frame
+
+# Assign each group in design matrix to a colour. 
+traitColors <- 
+  numbers2colors(traits, 
+                 signed = FALSE, 
+                 colors = c("#ffffff", "#73626E"))
+
+# Plot dendrogram of clustered samples with the design matrix underneath. 
+plotDendroAndColors(
+  sampleTree, 
+  traitColors,
+  groupLabels = names(traits),
+  main = "Sample dendrogram and trait heatmap using all genes")
+```
+
+# Network construction
+
+## Choice of soft-thresholding power
+
+Constructing a weighted gene network requires a soft-thresholding power β, which will be chosen based on the scale-free topology criterion described by Zhang & Horvath (2005).
+
+Here we perform the analysis of network topology for choosing a proper soft-threshold power.The following plots show the sufficiently high scale-free topology index (R2). Zhang and Hovarth stated in their framework ref that "we use the first parameter value where saturation is reached as long as it is above 0.8". Also, the mean connectivity should be not 0, otherwise nothing will be connected. 
+
+Also, I will need to choose between a signed or unsigned network. A good explanation of signed v unsigned networks is described [here](https://peterlangfelder.com/2019/05/30/signed-network-from-signed-topological-overlap/). However, essentially, in an *unsigned* network, genes are considered connected regardless of whether the correlation is positive or negative. Then in singed networks, the direction matters. 
+
+I will prepare a signed AND an unsigned network and see what the results look like. First, generate the plots to pick the soft thresholds. 
+
+```{r}
+# prepare a vector with a series of candicdate poweres
+powers = c(c(1:10), seq(from = 12, to = 20, by = 2))
+
+# signed network analysis of scale-free topology
+sft.signed <- 
+  pickSoftThreshold(
+    input_mat, #  Input data 
+    powerVector = powers, 
+    networkType = "signed",
+    dataIsExpr = TRUE, 
+    verbose = 5
+  )
+# unsigned network analysis of scale-free topology
+sft.unsigned <- 
+  pickSoftThreshold(
+    input_mat, #  Input data 
+    powerVector = powers, 
+    networkType = "unsigned",
+    dataIsExpr = TRUE, 
+    verbose = 5
+  )
+```
+
+### Signed network
+```{r}
+ggarrange(
+  sft.signed$fitIndices %>% 
+    ggplot(
+      aes(x = Power, y = -sign(slope) * SFT.R.sq)
+    ) +
+    geom_label(
+      aes(label = Power)
+    ) +
+    geom_hline(
+      yintercept = 0.8, 
+      colour = "red") +
+    annotate(
+      geom = "text", 
+      label = "beta = 0.8",
+      colour = "red",
+      x = 4, 
+      y = 0.75
+    ) +
+    labs(
+      x = "Soft Threshold (power)",
+      y = "Scale Free Topology Model Fit, signed R^2",
+      title = "Scale independence"
+    ), 
+  
+  sft.signed$fitIndices %>% 
+    ggplot(
+      aes(x = Power, y = mean.k.)
+    ) +
+    geom_label(
+      aes(label = Power)
+    ) +
+    geom_hline(
+      yintercept = 0, 
+      colour = "red") +
+    annotate(
+      geom = "text", 
+      label = "k = 0",
+      colour = "red",
+      x = 3, 
+      y = 190
+    ) +
+    labs(
+      x = "Soft Threshold (power)",
+      y = "Mean connectivity (k)",
+      title = "Mean connectivity" 
+  ) 
+  
+)
+```
+
+
+### Unsigned network
+```{r}
+ggarrange(
+  sft.unsigned$fitIndices %>% 
+    ggplot(
+      aes(x = Power, y = -sign(slope) * SFT.R.sq)
+    ) +
+    geom_label(
+      aes(label = Power)
+    ) +
+    geom_hline(
+      yintercept = 0.8, 
+      colour = "red") +
+    annotate(
+      geom = "text", 
+      label = "beta = 0.8",
+      colour = "red",
+      x = 4, 
+      y = 0.75
+    ) +
+    labs(
+      x = "Soft Threshold (power)",
+      y = "Scale Free Topology Model Fit, signed R^2",
+      title = "Scale independence"
+    ), 
+  
+  sft.unsigned$fitIndices %>% 
+    ggplot(
+      aes(x = Power, y = mean.k.)
+    ) +
+    geom_label(
+      aes(label = Power)
+    ) +
+    geom_hline(
+      yintercept = 0, 
+      colour = "red") +
+    annotate(
+      geom = "text", 
+      label = "k = 0",
+      colour = "red",
+      x = 3, 
+      y = 190
+    ) +
+    labs(
+      x = "Soft Threshold (power)",
+      y = "Mean connectivity (k)",
+      title = "Mean connectivity" 
+  ) 
+  
+)
+```
+
+
+### define soft powers
+```{r}
+softpower.signed = 16
+softpower.unsigned = 8
+```
+
+From the 2 graphs, I will assign the soft powers for the signed and unsigned networks as  `r softpower.signed` and `r softpower.unsigned` respectively. This is the first value where the graphs plateau which is more than 0.8. 
+
+## Co-expression adjacency
+
+We now calculate the adjacency matrix, using the soft thresholding powers just described. This essentially takes the gene expression data and calculates the pairwise similarity between genes (Euclidean distance). This similarity measure is then transformed into an adjacency matrix by using the power function. (i.e. a = |s^β|)
+
+
+```{r}
+adjacency.signed <-
+  adjacency(
+    input_mat, 
+    type = "signed", 
+    power = softpower.signed
+    )
+
+adjacency.unsigned <-
+  adjacency(
+    input_mat, 
+    type = "unsigned", 
+    power = softpower.unsigned
+    )
+```
+
+### vis the adjacency matrices
+
+actually I dont think my computer can do this when i am looking at all the genes. I'll just show a subset. Some genes show some correlation. (i.e. in the top left)
+
+```{r}
+adjacency.signed %>% 
+  .[1:500,1:500] %>% 
+  pheatmap(
+    color = viridis_pal(option = "plasma")(100), 
+    main = "Adjacency matrix of 500 genes (signed network)", 
+    show_colnames = FALSE, 
+    show_rownames = FALSE
+  )
+
+adjacency.unsigned %>% 
+  .[1:500,1:500] %>% 
+  pheatmap(
+    color = viridis_pal(option = "plasma")(100), 
+    main = "Adjacency matrix of 50 genes unsigned network)", 
+    show_colnames = FALSE, 
+    show_rownames = FALSE
+  )
+```
+
+
+## Topological Overlap Matrix (TOM)
+
+To minimize effects of noise and spurious associations, we transform the adjacency into Topological Overlap Matrix, and calculate the corresponding dissimilarity.
+
+```{r}
+# Turn adjacency into topological overlap
+TOM.signed <- TOMsimilarity(adjacency.signed)
+TOM.unsigned <- TOMsimilarity(adjacency.unsigned)
+
+dissTOM.signed = 1-TOM.signed
+dissTOM.unsigned = 1-TOM.unsigned
+```
+
+Plotting the dissimilairty of the genes in the network reveals a lot of the genes with TOM between 0.9 and 1. This means that the majority of the genes are very connected to each other.
+
+
+```{r}
+# remove these to free up mempry
+remove(TOM.signed)
+remove(TOM.unsigned)
+
+# We now use hierarchial clustering to produce a hierarchial clustering tree (dendrogram) of genes using TOM
+geneTree.signed <- hclust(as.dist(dissTOM.signed), method = "average")
+geneTree.unsigned <- hclust(as.dist(dissTOM.unsigned), method = "average")
+
+par(mfrow=c(2,1))
+
+# Plot the dendrogram
+plot(geneTree.signed,
+     xlab = "", ylab = "", 
+     main = "Gene clustering on TOM-based dissimilarity\nsigned network",
+     labels = FALSE, hang = 0.04)
+
+plot(geneTree.unsigned,
+     xlab = "", ylab = "", 
+     main = "Gene clustering on TOM-based dissimilarity\nunsigned network",
+     labels = FALSE, hang = 0.04)
+```
+
+## define modules
+
+The next step is to define the modules or clusters of genes. This is done using dynamic tree cut method.
+
+```{r}
+# The authors of WGCNA suggest this minimum module size to give "relatively large modules"
+minModuleSize = 30
+
+# Module identification using dynamic tree cut. The [arameters are set according to what the WGCNA tutorial suggests. 
+dynamicMods.signed <- 
+  cutreeDynamic(dendro = geneTree.signed, 
+                distM = dissTOM.signed,
+                deepSplit = 2, 
+                pamRespectsDendro = FALSE,
+                minClusterSize = minModuleSize)
+
+dynamicMods.unsigned <- 
+  cutreeDynamic(dendro = geneTree.unsigned, 
+                distM = dissTOM.unsigned,
+                deepSplit = 2, 
+                pamRespectsDendro = FALSE,
+                minClusterSize = minModuleSize)
+
+# give the modules a name based off baseR colours. 
+dynamicColors.signed <- labels2colors(dynamicMods.signed)
+
+dynamicColors.unsigned <- labels2colors(dynamicMods.unsigned)
+```
+
+The table below shows the number modules, and how many genes per module there are.
+
+```{r}
+# a table defining the number of modules and their # of genes
+table(dynamicColors.signed) %>% 
+    as_tibble() %>% 
+    set_colnames(c("module", "n_genes")) %>% 
+  kable(caption = "Module sizes for the signed network") %>% 
+  kable_styling(
+    full_width = F
+  )
+
+table(dynamicColors.unsigned) %>% 
+    as_tibble() %>% 
+    set_colnames(c("module", "n_genes")) %>% 
+  kable(caption = "Module sizes for the unsigned network") %>% 
+  kable_styling(
+    full_width = F
+  )
+```
+
+The next plot shows the clustering dendrogram of genes, with dissimilarity based on topological overlap, together with assigned merged module colors. There are a lot of modules here which are all over
+the dendrogram. The plots i've seen previously (i.e. [here](https://www.google.com/search?q=wgcna+dendrogram&sca_esv=592686156&rlz=1C5CHFA_enAU758AU758&tbm=isch&sxsrf=AM9HkKkSBZcwsy5iPy7CeFt2oRp73UiS6A:1703121651127&source=lnms&sa=X&sqi=2&ved=2ahUKEwj675jIrp-DAxU6TGwGHfCTBwMQ_AUoAXoECAIQAw&biw=1239&bih=827&dpr=1#imgrc=FAA689FFNIDKNM)) often show at least some blocks of module colours on the dendrogram. Although this is not always the case (see
+[here](https://peterlangfelder.com/2018/12/30/why-wgcna-modules-dont-always-agree-with-the-dendrogram/)),
+as this can be a limitation of visualizing on a dendrogram.
+
+```{r}
+plotDendroAndColors(geneTree.signed, 
+                    dynamicColors.signed, 
+                    "Dynamic Tree Cut",
+                    dendroLabels = FALSE, hang = 0.03,
+                    addGuide = TRUE, guideHang = 0.05,
+                    main = "Gene dendrogram and module colors\nsigned network"
+)
+
+plotDendroAndColors(geneTree.unsigned, 
+                    dynamicColors.unsigned, 
+                    "Dynamic Tree Cut",
+                    dendroLabels = FALSE, hang = 0.03,
+                    addGuide = TRUE, guideHang = 0.05,
+                    main = "Gene dendrogram and module colors\nunsigned network"
+)
+```
+
+I will next see if any modules show similarity and can be merged.
+
+## merge similar modules
+
+The Dynamic Tree Cut may identify modules whose expression profiles are very similar. It may be beneficial to merge such modules since their genes are highly co-expressed. To quantify co-expression similarity of entire modules, we calculate their eigengenes and cluster them on their
+correlation.
+
+```{r}
+# calculate the eigengenes of each module
+MEList.signed <- 
+  moduleEigengenes(
+    expr = logCPM.filtered %>% t(), 
+    colors = dynamicColors.signed,
+    excludeGrey = TRUE
+  )
+MEs.signed = MEList.signed$eigengenes
+
+
+MEList.unsigned <- 
+  moduleEigengenes(
+    expr = logCPM.filtered %>% t(), 
+    colors = dynamicColors.unsigned,
+    excludeGrey = TRUE
+  )
+MEs.unsigned = MEList.unsigned$eigengenes
+
+# Calculate dissimilarity of module eigengenes
+MEDiss.signed = 1-cor(MEs.signed)
+MEDiss.unsigned = 1-cor(MEs.unsigned)
+
+# Cluster module eigengenes
+METree.signed = hclust(as.dist(MEDiss.signed), method = "average")
+METree.unsigned = hclust(as.dist(MEDiss.unsigned), method = "average")
+
+# Plot the result
+sizeGrWindow(7, 6)
+plot(METree.signed, 
+     main = "Clustering of module eigengenes\n signed",
+     xlab = "", sub = "")
+
+
+sizeGrWindow(7, 6)
+plot(METree.unsigned, 
+     main = "Clustering of module eigengenes\n unsigned",
+     xlab = "", sub = "")
+
+# defnine a module threshold as the same if it has more than 25% dissimilarity (i.e.. 75% similar)
+MEDissThres = 0.25
+# Plot the cut line into the dendrogram
+abline(h=MEDissThres, col = "red") 
+```
+
+There appear to be plenty of modules which show similarity. Here we define the threshold for module merging as a height < 0.25 (as performed by authors of WGCNA). This corresponds to correlation of 0.75,
+to merge. This gives 59 modules (out of an original 86.)
+
+```{r}
+# Call an automatic merging function
+merge.signed <- mergeCloseModules(
+  t(logCPM.filtered), 
+  dynamicColors.signed, 
+  cutHeight = MEDissThres, 
+  verbose = 3)
+
+merge.unsigned <- mergeCloseModules(
+  t(logCPM.filtered), 
+  dynamicColors.unsigned, 
+  cutHeight = MEDissThres, 
+  verbose = 3)
+
+# The merged module colors
+mergedColors.signed = merge.signed$colors
+
+mergedColors.unsigned = merge.unsigned$colors
+
+# Eigengenes of the new merged modules:
+mergedMEs.signed = merge.signed$newMEs
+mergedMEs.unsigned = merge.unsigned$newMEs
+
+# Table of number of modules after merging
+merge.signed$colors %>% 
+  table %>%
+  as_tibble() %>% 
+  set_colnames(c("module(merged)", "n_genes")) %>% 
+  kable(caption = "Number of modules and genes after merging signed network") %>% 
+  kable_styling(full_width = FALSE)
+
+# Table of number of modules after merging
+merge.unsigned$colors %>% 
+  table %>%
+  as_tibble() %>% 
+  set_colnames(c("module(merged)", "n_genes")) %>% 
+  kable(caption = "Number of modules and genes after merging unsigned network") %>% 
+  kable_styling(full_width = FALSE)
+
+# Cluster module eigengenes
+mergedMETree.signed = hclust(as.dist(MEDiss.signed), method = "average")
+
+sizeGrWindow(12, 9)
+#pdf(file = "Plots/geneDendro-3.pdf", wi = 9, he = 6)
+plotDendroAndColors(geneTree.signed, 
+                    cbind(dynamicColors.signed, mergedColors.signed),
+                    c("Dynamic Tree Cut", "Merged dynamic"),
+                    dendroLabels = FALSE, hang = 0.03,
+                    addGuide = TRUE, guideHang = 0.05
+                    )
+
+
+# Cluster module eigengenes
+mergedMETree.unsigned = hclust(as.dist(MEDiss.unsigned), method = "average")
+
+sizeGrWindow(12, 9)
+#pdf(file = "Plots/geneDendro-3.pdf", wi = 9, he = 6)
+plotDendroAndColors(geneTree.unsigned, 
+                    cbind(dynamicColors.unsigned, mergedColors.unsigned),
+                    c("Dynamic Tree Cut", "Merged dynamic"),
+                    dendroLabels = FALSE, hang = 0.03,
+                    addGuide = TRUE, guideHang = 0.05
+)
+```
+
+I dont see a huge difference in the dendrogram. However, it did reduce the number of modules. Perhaps next I will do some enrichment analysis to see if the modules are biologically meaningful.
+
+# enrichment analysis of modules
+
+I next will perform GO enrichment analysis on the merged modules to see
+if they have any biological meaning. I will do this using GO terms, as
+these have very specific and broad meaning. Since I am having trouble using the inbuilt functions in `WGCNA`, I will use `cluster{rofiler` which allows me to perform a Fishers exact test for over representation.  
+
+```{r}
+# for the signed network
+# Make a list with the gene expression by module 
+colour.names.signed <- mergedColors.signed %>% 
+  unique
+
+logCPM.byModule.signed <- 
+ colour.names.signed %>% 
+  sapply(function(x) {
+    logCPM.filtered[mergedColors.signed==x,] %>% 
+      rownames
+  }, simplify = F)
+
+```
+
+```{r}
+merged.moduls.signed.enrichment.res <- 
+  logCPM.byModule.signed %>% 
+  sapply(function(x) {
+      enrichGO(
+        gene = x,
+        universe = rownames(logCPM.filtered),
+        OrgDb = org.Dr.eg.db,
+        keyType = "ENSEMBL",
+        ont = "ALL",
+        pAdjustMethod = "BH",
+        pvalueCutoff  = 0.01,
+        qvalueCutoff  = 0.05,
+        readable = TRUE)
+  }, simplify = F, )
+```
+
+```{r}
+merged.moduls.signed.enrichment.res$blue %>% 
+  dotplot()
+
+merged.moduls.signed.enrichment.res$darkred %>% 
+  barplot()
+
+merged.moduls.signed.enrichment.tabls <- merged.moduls.signed.enrichment.res %>% 
+  lapply(function(x) {
+    x %>% 
+      as_tibble 
+  }) %>% 
+  imap(~ .x %>% mutate(module = .y))
+```
+
+
+# Relate modules to fish metadata
+
+```{r}
+# Define numbers of genes and samples
+nGenes <- nrow(logCPM.filtered)
+nSamples <- ncol(logCPM.filtered)
+
+
+moduleTraitCor.signed <- cor(mergedMEs.signed, traits, use = "p", method = "spearman")
+moduleTraitCor.unsigned <- cor(mergedMEs.unsigned, traits, use = "p", method = "spearman")
+
+# Remove the grey module
+moduleTraitCor.signed <- moduleTraitCor.signed[rownames(moduleTraitCor.signed) != "MEgrey",]
+moduleTraitCor.unsigned <- moduleTraitCor.unsigned[rownames(moduleTraitCor.unsigned) != "MEgrey",]
+
+#moduleTraitCor <- bicor(MEs, traits, use = "p", maxPOutliers = 0.1, robustY=FALSE)
+
+moduleTraitPValue.signed <- corPvalueStudent(moduleTraitCor.signed, nSamples) %>%
+  as.data.frame() %>%
+  rownames_to_column("module") %>%
+  dplyr::filter(module != "MEgrey") %>%
+  column_to_rownames("module")
+
+
+interestingmodules.signed  <-
+  moduleTraitPValue.signed %>%
+  dplyr::filter_all(any_vars(. < 0.1)) %>%
+  rownames()
+
+moduleTraitCor.signed %>%
+  .[interestingmodules.signed,] %>%
+  as.data.frame() %>%
+  dplyr::select(-1) %>%
+  na.omit %>%
+  t %>%
+  pheatmap(
+    color = colorRampPalette(rev(brewer.pal(n = 7,
+                                            name = "RdBu")))(100),
+    labels_col = gsub(x = names(mergedMEs.signed), pattern = "ME", replacement = ""),
+    border_color = "white",
+    angle_col = 315,
+    treeheight_row = 0,
+    treeheight_col = 0,
+    clustering_distance_rows = "correlation",
+    clustering_distance_cols = "correlation",
+    #cutree_cols = 3,
+    cluster_rows = FALSE,
+    number_color = "black",
+    cellwidth = 25, cellheight = 25,
+    fontsize = 9,
+    display_numbers = moduleTraitPValue.signed %>%
+      .[interestingmodules.signed,] %>%
+      dplyr::select(-1) %>%
+      t %>%
+      signif(1)
+  )
+
+dotplot(merged.moduls.signed.enrichment.res$darkred)
+```

@@ -8,12 +8,15 @@ editor_options:
   chunk_output_type: console
 ---
 
-# Iron supplementation in Sanfilippo zebrafish 
+# Iron supplementation in Sanfilippo zebrafish
 
 This website contains my analysis described in Barthelson et al.
 
 -   Behaviour
 
--   RNA-seq
+-   RNA-seq:
+
+    -   [DEGs and Pathway analysis](RNA_seq.html)
+    -   WGCNA
 
 -   Metabolomics

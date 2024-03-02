@@ -11,5 +11,5 @@ output:
   workflowr::wflow_html:
     toc: yes
     toc_float: yes
-    theme: vapor
+    theme: readable
     highlight: textmate

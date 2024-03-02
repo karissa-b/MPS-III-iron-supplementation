@@ -16,7 +16,7 @@
 <script src="site_libs/header-attrs-2.25/header-attrs.js"></script>
 <script src="site_libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<link href="site_libs/bootstrap-3.3.5/css/cosmo.min.css" rel="stylesheet" />
+<link href="site_libs/bootstrap-3.3.5/css/readable.min.css" rel="stylesheet" />
 <script src="site_libs/bootstrap-3.3.5/js/bootstrap.min.js"></script>
 <script src="site_libs/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
 <script src="site_libs/bootstrap-3.3.5/shim/respond.min.js"></script>
@@ -256,10 +256,7 @@ $(document).ready(function () {
   <a href="index.html">Home</a>
 </li>
 <li>
-  <a href="about.html">About</a>
-</li>
-<li>
-  <a href="license.html">License</a>
+  <a href="RNA_seq.html">RNAseq</a>
 </li>
       </ul>
       <ul class="nav navbar-nav navbar-right">
@@ -302,7 +299,7 @@ aria-hidden="true"></span> </a>
 <div class="tab-content">
 <div id="summary" class="tab-pane fade in active">
 <p>
-<strong>Last updated:</strong> 2024-02-23
+<strong>Last updated:</strong> 2024-02-26
 </p>
 <p>
 <strong>Checks:</strong> <span
@@ -353,15 +350,15 @@ HTML.</p>
 <div class="panel panel-default">
 <div class="panel-heading">
 <p class="panel-title">
-<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongRepositoryversionstrongahrefhttpsgithubcomkarissabMPSIIIironsupplementationtreee590f21a384e146f33d67ce944fcda7d539eeb04targetblanke590f21a">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongRepositoryversionstrongahrefhttpsgithubcomkarissabMPSIIIironsupplementationtree75551f65f299989603fbae51d63205e9a73d8baftargetblank75551f6a">
 <span class="glyphicon glyphicon-ok text-success"
 aria-hidden="true"></span> <strong>Repository version:</strong>
-<a href="https://github.com/karissa-b/MPS-III-iron-supplementation/tree/e590f21a384e146f33d67ce944fcda7d539eeb04" target="_blank">e590f21</a>
+<a href="https://github.com/karissa-b/MPS-III-iron-supplementation/tree/75551f65f299989603fbae51d63205e9a73d8baf" target="_blank">75551f6</a>
 </a>
 </p>
 </div>
 <div
-id="strongRepositoryversionstrongahrefhttpsgithubcomkarissabMPSIIIironsupplementationtreee590f21a384e146f33d67ce944fcda7d539eeb04targetblanke590f21a"
+id="strongRepositoryversionstrongahrefhttpsgithubcomkarissabMPSIIIironsupplementationtree75551f65f299989603fbae51d63205e9a73d8baftargetblank75551f6a"
 class="panel-collapse collapse">
 <div class="panel-body">
 <p>
@@ -371,7 +368,7 @@ reproducibility.
 </p>
 <p>
 The results in this page were generated with repository version
-<a href="https://github.com/karissa-b/MPS-III-iron-supplementation/tree/e590f21a384e146f33d67ce944fcda7d539eeb04" target="_blank">e590f21</a>.
+<a href="https://github.com/karissa-b/MPS-III-iron-supplementation/tree/75551f65f299989603fbae51d63205e9a73d8baf" target="_blank">75551f6</a>.
 See the <em>Past versions</em> tab to see a history of the changes made
 to the R Markdown and HTML files.
 </p>
@@ -386,10 +383,28 @@ were generated:
 </p>
 <pre><code>
 Ignored files:
+    Ignored:    .DS_Store
     Ignored:    .Rhistory
     Ignored:    .Rproj.user/
+    Ignored:    data/.DS_Store
+    Ignored:    data/RNAseq/.DS_Store
+    Ignored:    data/RNAseq/fastqc_align/.DS_Store
+    Ignored:    data/RNAseq/fastqc_dedup/.DS_Store
+    Ignored:    data/RNAseq/fastqc_raw/.DS_Store
+    Ignored:    data/RNAseq/fastqc_trim/.DS_Store
+    Ignored:    data/RNAseq/starlog/.DS_Store
+
+Untracked files:
+    Untracked:  analysis/FeCit_FullExp_behaviour.rmd
+    Untracked:  analysis/WGCNA.rmd
+    Untracked:  analysis/metabolomicsFamBehaviour.rmd
+    Untracked:  data/RNAseq/R-objects/
+    Untracked:  data/ymaze/
+    Untracked:  output/plotsforSCFtalk/
 
 Unstaged changes:
+    Modified:   analysis/RNA_seq.rmd
+    Modified:   analysis/_site.yml
     Modified:   analysis/index.Rmd
 
 </code></pre>
@@ -437,6 +452,40 @@ Message
 <tbody>
 <tr>
 <td>
+Rmd
+</td>
+<td>
+<a href="https://github.com/karissa-b/MPS-III-iron-supplementation/blob/3fcc64aa2af986d16447b82686eaacbae9df5b4c/analysis/index.Rmd" target="_blank">3fcc64a</a>
+</td>
+<td>
+Karissa Barthelson
+</td>
+<td>
+2024-02-23
+</td>
+<td>
+adding RNA-seq
+</td>
+</tr>
+<tr>
+<td>
+html
+</td>
+<td>
+<a href="https://rawcdn.githack.com/karissa-b/MPS-III-iron-supplementation/3fcc64aa2af986d16447b82686eaacbae9df5b4c/docs/index.html" target="_blank">3fcc64a</a>
+</td>
+<td>
+Karissa Barthelson
+</td>
+<td>
+2024-02-23
+</td>
+<td>
+adding RNA-seq
+</td>
+</tr>
+<tr>
+<td>
 html
 </td>
 <td>
@@ -482,7 +531,11 @@ class="section level1">
 <p>This website contains my analysis described in Barthelson et al.</p>
 <ul>
 <li><p>Behaviour</p></li>
-<li><p>RNA-seq</p></li>
+<li><p>RNA-seq:</p>
+<ul>
+<li><a href="RNA_seq.html">DEGs and Pathway analysis</a></li>
+<li>WGCNA</li>
+</ul></li>
 <li><p>Metabolomics</p></li>
 </ul>
 </div>
