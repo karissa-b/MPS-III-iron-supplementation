@@ -5,7 +5,10 @@ date: "2024-02-24"
 output: workflowr::wflow_html
 editor_options:
   chunk_output_type: console
+  markdown: 
+    wrap: 72
 ---
+
 ```{r}
 library(tidyverse)
 library(magrittr)
@@ -52,11 +55,19 @@ cited as the following:
     gene co-expression network analysis. Statistical applications in
     genetics and molecular biology, 4(1).
 
-Genes which are co-expressed show similar changes across samples and are assuminlgy functionally related. This method does not rely on pre-defined gene sets. Rather, it clusters genes based on their
-similarity into modules. These modules of genes can then be subjected to enrichment analysis to identify what they comprise of. They can represent pathways or functions that we already know about. However,
+Genes which are co-expressed show similar changes across samples and are
+assuminlgy functionally related. This method does not rely on
+pre-defined gene sets. Rather, it clusters genes based on their
+similarity into modules. These modules of genes can then be subjected to
+enrichment analysis to identify what they comprise of. They can
+represent pathways or functions that we already know about. However,
 they can also represent new biological pathways or processes.
 
-Here, I will perform WGNCA to identify what modules/clusters are associated with genotype, treatment and/or sex. WGCNA needs normalised data. I have already done this using the TMM method + CQN. The data was already filtered for lowly expressed genes as well. I will import these objects from the previous analyses in [RNA_seq](RNA_seq.html) doc.
+Here, I will perform WGNCA to identify what modules/clusters are
+associated with genotype, treatment and/or sex. WGCNA needs normalised
+data. I have already done this using the TMM method + CQN. The data was
+already filtered for lowly expressed genes as well. I will import these
+objects from the previous analyses in [RNA_seq](RNA_seq.html) doc.
 
 ```{r}
 # read in data 
@@ -64,8 +75,6 @@ x <- readRDS("data/RNAseq/R-objects/x_dgeObject_withCQNoffset.rds")
 
 # CQN adjusted logCPM
 logCPM <- readRDS("data/RNAseq/R-objects/logCPM_CQN")
-
-
 ```
 
 ```{r, fig.cap="LogCPM values after TMM and CQN normalisation. All samples appear to have similar distributions"}
@@ -89,12 +98,13 @@ logCPM %>%
              nrow = 1) +
   theme(
     axis.text.x = element_text(angle = -45, hjust = 0))
-
 ```
 
 # prepare data for WGCNA
 
-Genes that do not vary across samples are not informative in network analysis, and will increase the noise. So I will only retain the top 75% most variable genes in the dataset 
+Genes that do not vary across samples are not informative in network
+analysis, and will increase the noise. So I will only retain the top 75%
+most variable genes in the dataset
 
 ```{r}
 # Retain genes with sufficiently high variation in expression across all samples.
@@ -140,9 +150,13 @@ ggarrange(
 logCPM.filtered <- logCPM[variableGenes,] 
 ```
 
-After filtering, there will be `r dim(logCPM.filtered)[1]` genes retained from the original `r dim(logCPM)[1]` genes. 
+After filtering, there will be `r dim(logCPM.filtered)[1]` genes
+retained from the original `r dim(logCPM)[1]` genes.
 
-The WGCNA pipeline is expecting an input matrix of RNAseq data (counts). Usually we need to rotate (transpose) the input data so `rows = samples` and `columns = gene counts`. So this is done here. An example of the first 5 rows is show here. 
+The WGCNA pipeline is expecting an input matrix of RNAseq data (counts).
+Usually we need to rotate (transpose) the input data so `rows = samples`
+and `columns = gene counts`. So this is done here. An example of the
+first 5 rows is show here.
 
 ```{r}
 # transpose the data 
@@ -155,9 +169,12 @@ input_mat[1:5,1:5]  %>%
 
 # check sample clustering
 
-Here we use the gene expression patterns after normalisation to build a sample dendrogram (sample tree), and check how the `traits` (e.g. metadata) related to the sample dendrogram.
+Here we use the gene expression patterns after normalisation to build a
+sample dendrogram (sample tree), and check how the `traits` (e.g.
+metadata) related to the sample dendrogram.
 
-Traits uses a design matrix as described in the previous DE genes analysis.
+Traits uses a design matrix as described in the previous DE genes
+analysis.
 
 ```{r, fig.cap="No obvious outliers are observed here"}
 # Apply hierarchial clustering to the gene exp data. 
@@ -165,7 +182,7 @@ sampleTree <- hclust(dist(input_mat), method = "complete")
 
 # Using the design matrix, which contains information of samples' sex and genotype
 traits <-  
-  model.matrix(~sex + genotype + treatment + genotype*treatment, x$samples) %>%
+  model.matrix(~(genotype+sex+treatment)^3, x$samples) %>%
   as.data.frame
 
 # Assign each group in design matrix to a colour. 
@@ -186,13 +203,26 @@ plotDendroAndColors(
 
 ## Choice of soft-thresholding power
 
-Constructing a weighted gene network requires a soft-thresholding power β, which will be chosen based on the scale-free topology criterion described by Zhang & Horvath (2005).
+Constructing a weighted gene network requires a soft-thresholding power
+β, which will be chosen based on the scale-free topology criterion
+described by Zhang & Horvath (2005).
 
-Here we perform the analysis of network topology for choosing a proper soft-threshold power.The following plots show the sufficiently high scale-free topology index (R2). Zhang and Hovarth stated in their framework ref that "we use the first parameter value where saturation is reached as long as it is above 0.8". Also, the mean connectivity should be not 0, otherwise nothing will be connected. 
+Here we perform the analysis of network topology for choosing a proper
+soft-threshold power.The following plots show the sufficiently high
+scale-free topology index (R2). Zhang and Hovarth stated in their
+framework ref that "we use the first parameter value where saturation is
+reached as long as it is above 0.8". Also, the mean connectivity should
+be not 0, otherwise nothing will be connected.
 
-Also, I will need to choose between a signed or unsigned network. A good explanation of signed v unsigned networks is described [here](https://peterlangfelder.com/2019/05/30/signed-network-from-signed-topological-overlap/). However, essentially, in an *unsigned* network, genes are considered connected regardless of whether the correlation is positive or negative. Then in singed networks, the direction matters. 
+Also, I will need to choose between a signed or unsigned network. A good
+explanation of signed vs unsigned networks is described
+[here](https://peterlangfelder.com/2019/05/30/signed-network-from-signed-topological-overlap/).
+However, essentially, in an *unsigned* network, genes are considered
+connected regardless of whether the correlation is positive or negative.
+Then in signed networks, the direction matters.
 
-I will prepare a signed AND an unsigned network and see what the results look like. First, generate the plots to pick the soft thresholds. 
+I will prepare a signed AND an unsigned network and see what the results
+look like. First, generate the plots to pick the soft thresholds.
 
 ```{r}
 # prepare a vector with a series of candicdate poweres
@@ -219,6 +249,7 @@ sft.unsigned <-
 ```
 
 ### Signed network
+
 ```{r}
 ggarrange(
   sft.signed$fitIndices %>% 
@@ -269,9 +300,9 @@ ggarrange(
   
 )
 ```
-
 
 ### Unsigned network
+
 ```{r}
 ggarrange(
   sft.unsigned$fitIndices %>% 
@@ -323,19 +354,25 @@ ggarrange(
 )
 ```
 
-
 ### define soft powers
+
 ```{r}
 softpower.signed = 16
 softpower.unsigned = 8
 ```
 
-From the 2 graphs, I will assign the soft powers for the signed and unsigned networks as  `r softpower.signed` and `r softpower.unsigned` respectively. This is the first value where the graphs plateau which is more than 0.8. 
+From the 2 graphs, I will assign the soft powers for the signed and
+unsigned networks as `r softpower.signed` and `r softpower.unsigned`
+respectively. This is the first value where the graphs plateau which is
+more than 0.8.
 
 ## Co-expression adjacency
 
-We now calculate the adjacency matrix, using the soft thresholding powers just described. This essentially takes the gene expression data and calculates the pairwise similarity between genes (Euclidean distance). This similarity measure is then transformed into an adjacency matrix by using the power function. (i.e. a = |s^β|)
-
+We now calculate the adjacency matrix, using the soft thresholding
+powers just described. This essentially takes the gene expression data
+and calculates the pairwise similarity between genes (Euclidean
+distance). This similarity measure is then transformed into an adjacency
+matrix by using the power function. (i.e. a = \|s\^β\|)
 
 ```{r}
 adjacency.signed <-
@@ -355,7 +392,9 @@ adjacency.unsigned <-
 
 ### vis the adjacency matrices
 
-actually I dont think my computer can do this when i am looking at all the genes. I'll just show a subset. Some genes show some correlation. (i.e. in the top left)
+actually I dont think my computer can do this when i am looking at all
+the genes. I'll just show a subset. Some genes show some correlation.
+(i.e. in the top left)
 
 ```{r}
 adjacency.signed %>% 
@@ -377,10 +416,11 @@ adjacency.unsigned %>%
   )
 ```
 
-
 ## Topological Overlap Matrix (TOM)
 
-To minimize effects of noise and spurious associations, we transform the adjacency into Topological Overlap Matrix, and calculate the corresponding dissimilarity.
+To minimize effects of noise and spurious associations, we transform the
+adjacency into Topological Overlap Matrix, and calculate the
+corresponding dissimilarity.
 
 ```{r}
 # Turn adjacency into topological overlap
@@ -391,8 +431,9 @@ dissTOM.signed = 1-TOM.signed
 dissTOM.unsigned = 1-TOM.unsigned
 ```
 
-Plotting the dissimilairty of the genes in the network reveals a lot of the genes with TOM between 0.9 and 1. This means that the majority of the genes are very connected to each other.
-
+Plotting the dissimilairty of the genes in the network reveals a lot of
+the genes with TOM between 0.9 and 1. This means that the majority of
+the genes are very connected to each other.
 
 ```{r}
 # remove these to free up mempry
@@ -419,7 +460,8 @@ plot(geneTree.unsigned,
 
 ## define modules
 
-The next step is to define the modules or clusters of genes. This is done using dynamic tree cut method.
+The next step is to define the modules or clusters of genes. This is
+done using dynamic tree cut method.
 
 ```{r}
 # The authors of WGCNA suggest this minimum module size to give "relatively large modules"
@@ -446,7 +488,8 @@ dynamicColors.signed <- labels2colors(dynamicMods.signed)
 dynamicColors.unsigned <- labels2colors(dynamicMods.unsigned)
 ```
 
-The table below shows the number modules, and how many genes per module there are.
+The table below shows the number modules, and how many genes per module
+there are.
 
 ```{r}
 # a table defining the number of modules and their # of genes
@@ -467,8 +510,13 @@ table(dynamicColors.unsigned) %>%
   )
 ```
 
-The next plot shows the clustering dendrogram of genes, with dissimilarity based on topological overlap, together with assigned merged module colors. There are a lot of modules here which are all over
-the dendrogram. The plots i've seen previously (i.e. [here](https://www.google.com/search?q=wgcna+dendrogram&sca_esv=592686156&rlz=1C5CHFA_enAU758AU758&tbm=isch&sxsrf=AM9HkKkSBZcwsy5iPy7CeFt2oRp73UiS6A:1703121651127&source=lnms&sa=X&sqi=2&ved=2ahUKEwj675jIrp-DAxU6TGwGHfCTBwMQ_AUoAXoECAIQAw&biw=1239&bih=827&dpr=1#imgrc=FAA689FFNIDKNM)) often show at least some blocks of module colours on the dendrogram. Although this is not always the case (see
+The next plot shows the clustering dendrogram of genes, with
+dissimilarity based on topological overlap, together with assigned
+merged module colors. There are a lot of modules here which are all over
+the dendrogram. The plots i've seen previously (i.e.
+[here](https://www.google.com/search?q=wgcna+dendrogram&sca_esv=592686156&rlz=1C5CHFA_enAU758AU758&tbm=isch&sxsrf=AM9HkKkSBZcwsy5iPy7CeFt2oRp73UiS6A:1703121651127&source=lnms&sa=X&sqi=2&ved=2ahUKEwj675jIrp-DAxU6TGwGHfCTBwMQ_AUoAXoECAIQAw&biw=1239&bih=827&dpr=1#imgrc=FAA689FFNIDKNM))
+often show at least some blocks of module colours on the dendrogram.
+Although this is not always the case (see
 [here](https://peterlangfelder.com/2018/12/30/why-wgcna-modules-dont-always-agree-with-the-dendrogram/)),
 as this can be a limitation of visualizing on a dendrogram.
 
@@ -494,7 +542,10 @@ I will next see if any modules show similarity and can be merged.
 
 ## merge similar modules
 
-The Dynamic Tree Cut may identify modules whose expression profiles are very similar. It may be beneficial to merge such modules since their genes are highly co-expressed. To quantify co-expression similarity of entire modules, we calculate their eigengenes and cluster them on their
+The Dynamic Tree Cut may identify modules whose expression profiles are
+very similar. It may be beneficial to merge such modules since their
+genes are highly co-expressed. To quantify co-expression similarity of
+entire modules, we calculate their eigengenes and cluster them on their
 correlation.
 
 ```{r}
@@ -542,7 +593,9 @@ MEDissThres = 0.25
 abline(h=MEDissThres, col = "red") 
 ```
 
-There appear to be plenty of modules which show similarity. Here we define the threshold for module merging as a height < 0.25 (as performed by authors of WGCNA). This corresponds to correlation of 0.75,
+There appear to be plenty of modules which show similarity. Here we
+define the threshold for module merging as a height \< 0.25 (as
+performed by authors of WGCNA). This corresponds to correlation of 0.75,
 to merge. This gives 59 modules (out of an original 86.)
 
 ```{r}
@@ -610,13 +663,17 @@ plotDendroAndColors(geneTree.unsigned,
 )
 ```
 
-I dont see a huge difference in the dendrogram. However, it did reduce the number of modules. Perhaps next I will do some enrichment analysis to see if the modules are biologically meaningful.
+I dont see a huge difference in the dendrogram. However, it did reduce
+the number of modules. Perhaps next I will do some enrichment analysis
+to see if the modules are biologically meaningful.
 
 # enrichment analysis of modules
 
 I next will perform GO enrichment analysis on the merged modules to see
 if they have any biological meaning. I will do this using GO terms, as
-these have very specific and broad meaning. Since I am having trouble using the inbuilt functions in `WGCNA`, I will use `cluster{rofiler` which allows me to perform a Fishers exact test for over representation.  
+these have very specific and broad meaning. Since I am having trouble
+using the inbuilt functions in `WGCNA`, I will use `cluster{rofiler`
+which allows me to perform a Fishers exact test for over representation.
 
 ```{r}
 # for the signed network
@@ -664,7 +721,6 @@ merged.moduls.signed.enrichment.tabls <- merged.moduls.signed.enrichment.res %>%
   }) %>% 
   imap(~ .x %>% mutate(module = .y))
 ```
-
 
 # Relate modules to fish metadata
 
@@ -725,3 +781,9 @@ moduleTraitCor.signed %>%
 
 dotplot(merged.moduls.signed.enrichment.res$darkred)
 ```
+
+# Conclusion
+
+While the WGCNA analysis was successful, I think I should build WGCNA
+networks seperately for each sex to help simplify the linear modelling
+when correlating the MEs with genotype and treatment.

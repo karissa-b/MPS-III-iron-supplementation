@@ -1,0 +1,1982 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+
+<meta name="author" content="Karissa Barthelson" />
+
+<meta name="date" content="2024-03-07" />
+
+<title>WGCNA_2</title>
+
+<script src="site_libs/header-attrs-2.25/header-attrs.js"></script>
+<script src="site_libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="site_libs/bootstrap-3.3.5/css/readable.min.css" rel="stylesheet" />
+<script src="site_libs/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/respond.min.js"></script>
+<style>h1 {font-size: 34px;}
+       h1.title {font-size: 38px;}
+       h2 {font-size: 30px;}
+       h3 {font-size: 24px;}
+       h4 {font-size: 18px;}
+       h5 {font-size: 16px;}
+       h6 {font-size: 12px;}
+       code {color: inherit; background-color: rgba(0, 0, 0, 0.04);}
+       pre:not([class]) { background-color: white }</style>
+<script src="site_libs/jqueryui-1.13.2/jquery-ui.min.js"></script>
+<link href="site_libs/tocify-1.9.1/jquery.tocify.css" rel="stylesheet" />
+<script src="site_libs/tocify-1.9.1/jquery.tocify.js"></script>
+<script src="site_libs/navigation-1.1/tabsets.js"></script>
+<script src="site_libs/navigation-1.1/codefolding.js"></script>
+<link href="site_libs/highlightjs-9.12.0/textmate.css" rel="stylesheet" />
+<script src="site_libs/highlightjs-9.12.0/highlight.js"></script>
+
+<link rel="icon" href="https://github.com/workflowr/workflowr-assets/raw/main/img/reproducible.png">
+<!-- Add a small amount of space between sections. -->
+<style type="text/css">
+div.section {
+  padding-top: 12px;
+}
+</style>
+
+
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+    </style>
+
+<style type="text/css">code{white-space: pre;}</style>
+<script type="text/javascript">
+if (window.hljs) {
+  hljs.configure({languages: []});
+  hljs.initHighlightingOnLoad();
+  if (document.readyState && document.readyState === "complete") {
+    window.setTimeout(function() { hljs.initHighlighting(); }, 0);
+  }
+}
+</script>
+
+
+
+
+
+
+
+
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+img {
+  max-width:100%;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+.html-widget {
+  margin-bottom: 20px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+summary {
+  display: list-item;
+}
+details > summary > p:only-child {
+  display: inline;
+}
+pre code {
+  padding: 0;
+}
+</style>
+
+
+<style type="text/css">
+.dropdown-submenu {
+  position: relative;
+}
+.dropdown-submenu>.dropdown-menu {
+  top: 0;
+  left: 100%;
+  margin-top: -6px;
+  margin-left: -1px;
+  border-radius: 0 6px 6px 6px;
+}
+.dropdown-submenu:hover>.dropdown-menu {
+  display: block;
+}
+.dropdown-submenu>a:after {
+  display: block;
+  content: " ";
+  float: right;
+  width: 0;
+  height: 0;
+  border-color: transparent;
+  border-style: solid;
+  border-width: 5px 0 5px 5px;
+  border-left-color: #cccccc;
+  margin-top: 5px;
+  margin-right: -10px;
+}
+.dropdown-submenu:hover>a:after {
+  border-left-color: #adb5bd;
+}
+.dropdown-submenu.pull-left {
+  float: none;
+}
+.dropdown-submenu.pull-left>.dropdown-menu {
+  left: -100%;
+  margin-left: 10px;
+  border-radius: 6px 0 6px 6px;
+}
+</style>
+
+<script type="text/javascript">
+// manage active state of menu based on current page
+$(document).ready(function () {
+  // active menu anchor
+  href = window.location.pathname
+  href = href.substr(href.lastIndexOf('/') + 1)
+  if (href === "")
+    href = "index.html";
+  var menuAnchor = $('a[href="' + href + '"]');
+
+  // mark the anchor link active (and if it's in a dropdown, also mark that active)
+  var dropdown = menuAnchor.closest('li.dropdown');
+  if (window.bootstrap) { // Bootstrap 4+
+    menuAnchor.addClass('active');
+    dropdown.find('> .dropdown-toggle').addClass('active');
+  } else { // Bootstrap 3
+    menuAnchor.parent().addClass('active');
+    dropdown.addClass('active');
+  }
+
+  // Navbar adjustments
+  var navHeight = $(".navbar").first().height() + 15;
+  var style = document.createElement('style');
+  var pt = "padding-top: " + navHeight + "px; ";
+  var mt = "margin-top: -" + navHeight + "px; ";
+  var css = "";
+  // offset scroll position for anchor links (for fixed navbar)
+  for (var i = 1; i <= 6; i++) {
+    css += ".section h" + i + "{ " + pt + mt + "}\n";
+  }
+  style.innerHTML = "body {" + pt + "padding-bottom: 40px; }\n" + css;
+  document.head.appendChild(style);
+});
+</script>
+
+<!-- tabsets -->
+
+<style type="text/css">
+.tabset-dropdown > .nav-tabs {
+  display: inline-table;
+  max-height: 500px;
+  min-height: 44px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.tabset-dropdown > .nav-tabs > li.active:before, .tabset-dropdown > .nav-tabs.nav-tabs-open:before {
+  content: "\e259";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li.active:before {
+  content: "\e258";
+  font-family: 'Glyphicons Halflings';
+  border: none;
+}
+
+.tabset-dropdown > .nav-tabs > li.active {
+  display: block;
+}
+
+.tabset-dropdown > .nav-tabs > li > a,
+.tabset-dropdown > .nav-tabs > li > a:focus,
+.tabset-dropdown > .nav-tabs > li > a:hover {
+  border: none;
+  display: inline-block;
+  border-radius: 4px;
+  background-color: transparent;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li {
+  display: block;
+  float: none;
+}
+
+.tabset-dropdown > .nav-tabs > li {
+  display: none;
+}
+</style>
+
+<!-- code folding -->
+<style type="text/css">
+.code-folding-btn { margin-bottom: 4px; }
+</style>
+
+
+
+<style type="text/css">
+
+#TOC {
+  margin: 25px 0px 20px 0px;
+}
+@media (max-width: 768px) {
+#TOC {
+  position: relative;
+  width: 100%;
+}
+}
+
+@media print {
+.toc-content {
+  /* see https://github.com/w3c/csswg-drafts/issues/4434 */
+  float: right;
+}
+}
+
+.toc-content {
+  padding-left: 30px;
+  padding-right: 40px;
+}
+
+div.main-container {
+  max-width: 1200px;
+}
+
+div.tocify {
+  width: 20%;
+  max-width: 260px;
+  max-height: 85%;
+}
+
+@media (min-width: 768px) and (max-width: 991px) {
+  div.tocify {
+    width: 25%;
+  }
+}
+
+@media (max-width: 767px) {
+  div.tocify {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+.tocify ul, .tocify li {
+  line-height: 20px;
+}
+
+.tocify-subheader .tocify-item {
+  font-size: 0.90em;
+}
+
+.tocify .list-group-item {
+  border-radius: 0px;
+}
+
+
+</style>
+
+
+
+</head>
+
+<body>
+
+
+<div class="container-fluid main-container">
+
+
+<!-- setup 3col/9col grid for toc_float and main content  -->
+<div class="row">
+<div class="col-xs-12 col-sm-4 col-md-3">
+<div id="TOC" class="tocify">
+</div>
+</div>
+
+<div class="toc-content col-xs-12 col-sm-8 col-md-9">
+
+
+
+
+<div class="navbar navbar-default  navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-bs-toggle="collapse" data-target="#navbar" data-bs-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">MPS III iron supplementation</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li>
+  <a href="index.html">Home</a>
+</li>
+<li>
+  <a href="RNA_seq.html">RNAseq</a>
+</li>
+      </ul>
+      <ul class="nav navbar-nav navbar-right">
+        
+      </ul>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+
+<div class="btn-group pull-right float-right">
+<button type="button" class="btn btn-default btn-xs btn-secondary btn-sm dropdown-toggle" data-toggle="dropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><span>Code</span> <span class="caret"></span></button>
+<ul class="dropdown-menu dropdown-menu-right" style="min-width: 50px;">
+<li><a id="rmd-show-all-code" href="#">Show All Code</a></li>
+<li><a id="rmd-hide-all-code" href="#">Hide All Code</a></li>
+</ul>
+</div>
+
+
+
+<h1 class="title toc-ignore">WGCNA_2</h1>
+<h4 class="author">Karissa Barthelson</h4>
+<h4 class="date">2024-03-07</h4>
+
+</div>
+
+
+<p>
+<button type="button" class="btn btn-default btn-workflowr btn-workflowr-report" data-toggle="collapse" data-target="#workflowr-report">
+<span class="glyphicon glyphicon-list" aria-hidden="true"></span>
+workflowr <span class="glyphicon glyphicon-exclamation-sign text-danger"
+aria-hidden="true"></span>
+</button>
+</p>
+<div id="workflowr-report" class="collapse">
+<ul class="nav nav-tabs">
+<li class="active">
+<a data-toggle="tab" href="#summary">Summary</a>
+</li>
+<li>
+<a data-toggle="tab" href="#checks"> Checks <span
+class="glyphicon glyphicon-exclamation-sign text-danger"
+aria-hidden="true"></span> </a>
+</li>
+<li>
+<a data-toggle="tab" href="#versions">Past versions</a>
+</li>
+</ul>
+<div class="tab-content">
+<div id="summary" class="tab-pane fade in active">
+<p>
+<strong>Last updated:</strong> 2024-03-08
+</p>
+<p>
+<strong>Checks:</strong> <span
+class="glyphicon glyphicon-ok text-success" aria-hidden="true"></span> 6
+<span class="glyphicon glyphicon-exclamation-sign text-danger"
+aria-hidden="true"></span> 1
+</p>
+<p>
+<strong>Knit directory:</strong> <code>MPS III iron
+supplementation/</code> <span class="glyphicon glyphicon-question-sign"
+aria-hidden="true"
+title="This is the local directory in which the code in this file was executed.">
+</span>
+</p>
+<p>
+This reproducible <a href="https://rmarkdown.rstudio.com">R Markdown</a>
+analysis was created with <a
+  href="https://github.com/workflowr/workflowr">workflowr</a> (version
+1.7.1). The <em>Checks</em> tab describes the reproducibility checks
+that were applied when the results were created. The <em>Past
+versions</em> tab lists the development history.
+</p>
+<hr>
+</div>
+<div id="checks" class="tab-pane fade">
+<div id="workflowr-checks" class="panel-group">
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongRMarkdownfilestronguncommittedchanges">
+<span class="glyphicon glyphicon-exclamation-sign text-danger"
+aria-hidden="true"></span> <strong>R Markdown file:</strong> uncommitted
+changes </a>
+</p>
+</div>
+<div id="strongRMarkdownfilestronguncommittedchanges"
+class="panel-collapse collapse">
+<div class="panel-body">
+<p>The R Markdown is untracked by Git. To know which version of the R
+Markdown file created these results, you’ll want to first commit it to
+the Git repo. If you’re still working on the analysis, you can ignore
+this warning. When you’re finished, you can run
+<code>wflow_publish</code> to commit the R Markdown file and build the
+HTML.</p>
+</div>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongEnvironmentstrongempty">
+<span class="glyphicon glyphicon-ok text-success"
+aria-hidden="true"></span> <strong>Environment:</strong> empty </a>
+</p>
+</div>
+<div id="strongEnvironmentstrongempty" class="panel-collapse collapse">
+<div class="panel-body">
+<p>Great job! The global environment was empty. Objects defined in the
+global environment can affect the analysis in your R Markdown file in
+unknown ways. For reproduciblity it’s best to always run the code in an
+empty environment.</p>
+</div>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongSeedstrongcodesetseed20240223code">
+<span class="glyphicon glyphicon-ok text-success"
+aria-hidden="true"></span> <strong>Seed:</strong>
+<code>set.seed(20240223)</code> </a>
+</p>
+</div>
+<div id="strongSeedstrongcodesetseed20240223code"
+class="panel-collapse collapse">
+<div class="panel-body">
+<p>The command <code>set.seed(20240223)</code> was run prior to running
+the code in the R Markdown file. Setting a seed ensures that any results
+that rely on randomness, e.g. subsampling or permutations, are
+reproducible.</p>
+</div>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongSessioninformationstrongrecorded">
+<span class="glyphicon glyphicon-ok text-success"
+aria-hidden="true"></span> <strong>Session information:</strong>
+recorded </a>
+</p>
+</div>
+<div id="strongSessioninformationstrongrecorded"
+class="panel-collapse collapse">
+<div class="panel-body">
+<p>Great job! Recording the operating system, R version, and package
+versions is critical for reproducibility.</p>
+</div>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongCachestrongnone">
+<span class="glyphicon glyphicon-ok text-success"
+aria-hidden="true"></span> <strong>Cache:</strong> none </a>
+</p>
+</div>
+<div id="strongCachestrongnone" class="panel-collapse collapse">
+<div class="panel-body">
+<p>Nice! There were no cached chunks for this analysis, so you can be
+confident that you successfully produced the results during this
+run.</p>
+</div>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongFilepathsstrongrelative">
+<span class="glyphicon glyphicon-ok text-success"
+aria-hidden="true"></span> <strong>File paths:</strong> relative </a>
+</p>
+</div>
+<div id="strongFilepathsstrongrelative" class="panel-collapse collapse">
+<div class="panel-body">
+<p>Great job! Using relative paths to the files within your workflowr
+project makes it easier to run your code on other machines.</p>
+</div>
+</div>
+</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+<p class="panel-title">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongRepositoryversionstrongahrefhttpsgithubcomkarissabMPSIIIironsupplementationtreebbc3ea067e7ebd5c580c479e0fad72fdc8f7cf9atargetblankbbc3ea0a">
+<span class="glyphicon glyphicon-ok text-success"
+aria-hidden="true"></span> <strong>Repository version:</strong>
+<a href="https://github.com/karissa-b/MPS-III-iron-supplementation/tree/bbc3ea067e7ebd5c580c479e0fad72fdc8f7cf9a" target="_blank">bbc3ea0</a>
+</a>
+</p>
+</div>
+<div
+id="strongRepositoryversionstrongahrefhttpsgithubcomkarissabMPSIIIironsupplementationtreebbc3ea067e7ebd5c580c479e0fad72fdc8f7cf9atargetblankbbc3ea0a"
+class="panel-collapse collapse">
+<div class="panel-body">
+<p>
+Great! You are using Git for version control. Tracking code development
+and connecting the code version to the results is critical for
+reproducibility.
+</p>
+<p>
+The results in this page were generated with repository version
+<a href="https://github.com/karissa-b/MPS-III-iron-supplementation/tree/bbc3ea067e7ebd5c580c479e0fad72fdc8f7cf9a" target="_blank">bbc3ea0</a>.
+See the <em>Past versions</em> tab to see a history of the changes made
+to the R Markdown and HTML files.
+</p>
+<p>
+Note that you need to be careful to ensure that all relevant files for
+the analysis have been committed to Git prior to generating the results
+(you can use <code>wflow_publish</code> or
+<code>wflow_git_commit</code>). workflowr only checks the R Markdown
+file, but you know if there are other scripts or data files that it
+depends on. Below is the status of the Git repository when the results
+were generated:
+</p>
+<pre><code>
+Ignored files:
+    Ignored:    .DS_Store
+    Ignored:    .Rhistory
+    Ignored:    .Rproj.user/
+    Ignored:    analysis/figure/
+    Ignored:    data/.DS_Store
+    Ignored:    data/RNAseq/.DS_Store
+    Ignored:    data/RNAseq/fastqc_align/.DS_Store
+    Ignored:    data/RNAseq/fastqc_dedup/.DS_Store
+    Ignored:    data/RNAseq/fastqc_raw/.DS_Store
+    Ignored:    data/RNAseq/fastqc_trim/.DS_Store
+    Ignored:    data/RNAseq/starlog/.DS_Store
+    Ignored:    data/ymaze/.DS_Store
+    Ignored:    data/ymaze/metabolomics_fam/.DS_Store
+    Ignored:    data/ymaze/metabolomics_fam/raw_data/.DS_Store
+    Ignored:    data/ymaze/metabolomics_fam/tracking_videos/
+    Ignored:    data/ymaze/ymaze_FeCit_FullExp/.DS_Store
+    Ignored:    data/ymaze/ymaze_FeCit_FullExp/videos/
+
+Untracked files:
+    Untracked:  analysis/WGCNA_2.rmd
+
+Unstaged changes:
+    Modified:   analysis/WGCNA.rmd
+    Modified:   analysis/_site.yml
+
+</code></pre>
+<p>
+Note that any generated files, e.g. HTML, png, CSS, etc., are not
+included in this status report because it is ok for generated content to
+have uncommitted changes.
+</p>
+</div>
+</div>
+</div>
+</div>
+<hr>
+</div>
+<div id="versions" class="tab-pane fade">
+<p>
+There are no past versions. Publish this analysis with
+<code>wflow_publish()</code> to start tracking its development.
+</p>
+<hr>
+</div>
+</div>
+</div>
+<pre class="r"><code>library(tidyverse)
+library(magrittr)
+library(readxl)
+
+# vis
+library(pander)
+library(kableExtra)
+library(UpSetR)
+library(scales)
+library(pheatmap)
+library(ggpubr)
+library(ggrepel)
+library(ggfortify)
+library(ggforce)
+library(RColorBrewer)
+library(colorspace)
+library(igraph)
+
+# analysis
+library(WGCNA)
+library(topGO)
+library(org.Dr.eg.db)
+library(clusterProfiler)
+library(msigdbr)
+library(matrixStats)
+
+theme_set(theme_classic())
+options(stringsAsFactors = FALSE)
+allowWGCNAThreads()  </code></pre>
+<pre><code>Allowing multi-threading with up to 12 threads.</code></pre>
+<div id="introduction" class="section level1">
+<h1>Introduction</h1>
+<p>In the previous <a href="WGCNA.html">WGCNA analysis</a>, I analysed
+all fish in the experiment together. This was overall successful, and I
+found modules of co-expressed genes, which were over-represented with
+gene ontologies meaning they have biological relevance. Some modules
+were significantly correlated with genotype and treatment as well.
+However, it was difficult to perform linear modelling when I wanted to
+look at module eigengenes which are associated with genotype and
+treatment across the sexes. I found a paper by <a
+href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6404618/">Sutherland
+et al.</a> which performed WGCNA analysis on Brook Char (another type of
+fish) across sexes. They built co-expression networks for each sex, then
+looked for module preservation. I will try this approach here.</p>
+</div>
+<div id="setup" class="section level1">
+<h1>setup</h1>
+<div id="read-in-data" class="section level2">
+<h2>Read in data</h2>
+<p>The <code>DGE</code> object was read in, which contains the gene
+expression and sample info. The logCPM values for each gene were also
+read in which are already filtered for lowly expressed genes, are TMM
+&amp; CQN normalised. I then will seperate the DGE object into two of
+them by sex.</p>
+<pre class="r"><code># read in data 
+x &lt;- readRDS(&quot;data/RNAseq/R-objects/x_dgeObject_withCQNoffset.rds&quot;)
+
+# update the group factor for this analysis
+x$samples %&lt;&gt;% 
+  mutate(group = paste0(genotype, &quot;_&quot;, treatment2) %&gt;% 
+           as.factor())
+
+# CQN adjusted logCPM
+logCPM &lt;- readRDS(&quot;data/RNAseq/R-objects/logCPM_CQN&quot;)</code></pre>
+<pre class="r"><code># plot the TMM/CQN normalised data 
+logCPM %&gt;% 
+  as.data.frame() %&gt;% 
+  rownames_to_column(&quot;gene_id&quot;) %&gt;% 
+  pivot_longer(
+    names_to = &quot;sample&quot;, 
+    values_to = &quot;logCPM&quot;, 
+    colnames(x)
+  ) %&gt;% 
+  left_join(x$samples) %&gt;% 
+  ggplot(
+    aes(x = sample, y = logCPM, 
+        fill = genotype), 
+    size = 1
+    ) +
+  geom_boxplot()+
+  facet_wrap(~sex+treatment, scales = &quot;free_x&quot;, 
+             nrow = 1) +
+  theme(
+    axis.text.x = element_text(angle = -45, hjust = 0))</code></pre>
+<div class="figure" style="text-align: center">
+<img src="figure/WGCNA_2.rmd/unnamed-chunk-3-1.png" alt="LogCPM values after TMM and CQN normalisation. All samples appear to have similar distributions" width="75%" height="75%" />
+<p class="caption">
+LogCPM values after TMM and CQN normalisation. All samples appear to
+have similar distributions
+</p>
+</div>
+<pre class="r"><code># make vectors for subsetting
+male.fish.ids &lt;- x$samples %&gt;% 
+  dplyr::filter(sex == &quot;male&quot;) %&gt;% 
+  .$fish_id
+
+female.fish.ids &lt;- x$samples %&gt;% 
+  dplyr::filter(sex == &quot;female&quot;) %&gt;% 
+  .$fish_id
+
+# subset DGEs
+x.males &lt;- x[,male.fish.ids]
+x.females &lt;- x[,female.fish.ids]
+
+# subset logCPMs
+logCPM.male &lt;- logCPM[,male.fish.ids]
+logCPM.female &lt;- logCPM[,female.fish.ids]</code></pre>
+</div>
+<div id="prepare-for-wgcna" class="section level2">
+<h2>prepare for WGCNA</h2>
+<p>Genes that do not vary across samples are not informative in network
+analysis, and will increase the noise. So I will only retain the top 75%
+most variable genes in the datasets. Assessment of the distribution of
+the gene expression values before and after filtering shows no issues in
+any artefacts being generated.</p>
+<pre class="r"><code># Retain genes with sufficiently high variation in expression across all samples.
+# Here we define sufficiently high variation as having a standard deviation above the 25th quantile (so not in bottom 25%).
+variableGenes.female &lt;- rowSds(logCPM.female) &gt;  quantile(rowSds(logCPM.female), 0.25)
+
+variableGenes.male &lt;- rowSds(logCPM.male) &gt;  quantile(rowSds(logCPM.male), 0.25)</code></pre>
+<pre class="r"><code># write a function to plot these out
+plot.density.filtering = function(dge, 
+                                  logCPM, 
+                                  variableGenesVector, 
+                                  ggtitle) {
+  logCPM %&gt;% 
+  as.data.frame() %&gt;% 
+  rownames_to_column(&quot;gene_id&quot;) %&gt;%
+  pivot_longer(
+    names_to = &quot;fish_id&quot;, 
+    values_to = &quot;logCPM&quot;, 
+    colnames(dge)
+  ) %&gt;% 
+  left_join(dge$samples) %&gt;% 
+  ggplot(aes(x = logCPM, colour = group)) +
+  geom_density() + 
+  ggtitle(ggtitle)
+}</code></pre>
+<pre class="r"><code>## females
+ggarrange(
+  plot.density.filtering(
+    dge = x.females, logCPM = logCPM.female, ggtitle = &quot;before filtering&quot;), 
+  
+    plot.density.filtering(
+    dge = x.females, 
+    logCPM = logCPM.female %&gt;% extract(variableGenes.female,),
+    ggtitle = &quot;After filtering&quot;), 
+  common.legend = TRUE
+)</code></pre>
+<div class="figure" style="text-align: center">
+<img src="figure/WGCNA_2.rmd/unnamed-chunk-7-1.png" alt="Females" width="75%" height="75%" />
+<p class="caption">
+Females
+</p>
+</div>
+<pre class="r"><code>ggarrange(
+  plot.density.filtering(
+    dge = x.males, logCPM = logCPM.male, ggtitle = &quot;before filtering&quot;), 
+  
+    plot.density.filtering(
+    dge = x.males, 
+    logCPM = logCPM.male %&gt;% extract(variableGenes.male,),
+    ggtitle = &quot;After filtering&quot;), 
+  common.legend = TRUE
+) </code></pre>
+<div class="figure" style="text-align: center">
+<img src="figure/WGCNA_2.rmd/unnamed-chunk-8-1.png" alt="Males" width="75%" height="75%" />
+<p class="caption">
+Males
+</p>
+</div>
+<pre class="r"><code># peformed the filtering
+logCPM.female.filtered &lt;- logCPM.female %&gt;% extract(variableGenes.female,)
+logCPM.male.filtered &lt;- logCPM.male %&gt;% extract(variableGenes.male,)</code></pre>
+<p>the table below shows the number of genes retained after filtering.
+While the numbers of genes are the same in each sex, they are not
+necessarily the same genes</p>
+<pre class="r"><code>tibble(
+  `filtered?` = c(
+    &quot;unfiltered&quot;, &quot;unfiltered&quot;, 
+    &quot;filtered&quot;, &quot;filtered&quot; 
+), 
+
+sex = c(&quot;female&quot;, &quot;male&quot;, &quot;female&quot;, &quot;male&quot;), 
+
+n_genes = c(
+  dim(logCPM.female)[1], 
+  dim(logCPM.male)[1],
+  dim(logCPM.female.filtered)[1],
+  dim(logCPM.male.filtered)[1]
+  )
+) %&gt;% 
+  pander()</code></pre>
+<table style="width:44%;">
+<colgroup>
+<col width="18%" />
+<col width="12%" />
+<col width="13%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="center">filtered?</th>
+<th align="center">sex</th>
+<th align="center">n_genes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="center">unfiltered</td>
+<td align="center">female</td>
+<td align="center">18101</td>
+</tr>
+<tr class="even">
+<td align="center">unfiltered</td>
+<td align="center">male</td>
+<td align="center">18101</td>
+</tr>
+<tr class="odd">
+<td align="center">filtered</td>
+<td align="center">female</td>
+<td align="center">13575</td>
+</tr>
+<tr class="even">
+<td align="center">filtered</td>
+<td align="center">male</td>
+<td align="center">13575</td>
+</tr>
+</tbody>
+</table>
+<p>The WGCNA pipeline is expecting an input matrix of RNAseq data
+(counts). Usually we need to rotate (transpose) the input data so
+<code>rows = samples</code> and <code>columns = gene counts</code>. So
+this is done here.</p>
+<pre class="r"><code># transpose the data 
+input_mat.females = t(logCPM.female.filtered)
+input_mat.males = t(logCPM.male.filtered)</code></pre>
+</div>
+</div>
+<div id="check-sample-clustering" class="section level1">
+<h1>check sample clustering</h1>
+<p>Here we use the gene expression patterns after normalisation to build
+sample dendrograms (sample tree), and check how the <code>traits</code>
+(e.g. metadata) related to the sample dendrogram.</p>
+<p>Traits uses a design matrix as described in the previous DE genes
+analysis.s</p>
+<pre class="r"><code># Apply hierarchial clustering to the gene exp data. 
+sampleTree.females &lt;- hclust(dist(input_mat.females), method = &quot;complete&quot;)
+sampleTree.males &lt;- hclust(dist(input_mat.males), method = &quot;complete&quot;)
+
+# Using the design matrix, which contains information of samples&#39; sex and genotype
+traits.females &lt;-  
+  model.matrix(~(genotype+treatment)^2, x.females$samples) %&gt;%
+  as.data.frame
+
+traits.males &lt;-  
+  model.matrix(~(genotype+treatment)^2, x.males$samples) %&gt;%
+  as.data.frame
+
+# Assign each group in design matrix to a colour. 
+traitColors.females &lt;- 
+  numbers2colors(traits.females, 
+                 signed = FALSE, 
+                 colors = c(&quot;#ffffff&quot;, &quot;#73626E&quot;))
+
+traitColors.males &lt;- 
+  numbers2colors(traits.males, 
+                 signed = FALSE, 
+                 colors = c(&quot;#ffffff&quot;, &quot;#73626E&quot;))
+
+# Plot dendrogram of clustered samples with the design matrix underneath. 
+
+plotDendroAndColors(
+  sampleTree.females, 
+  traitColors.females,
+  groupLabels = names(traits.females),
+  main = &quot;Females \nSample dendrogram and trait heatmap&quot;)</code></pre>
+<div class="figure" style="text-align: center">
+<img src="figure/WGCNA_2.rmd/unnamed-chunk-12-1.png" alt="No obvious outliers are observed here" width="75%" height="75%" />
+<p class="caption">
+No obvious outliers are observed here
+</p>
+</div>
+<pre class="r"><code>plotDendroAndColors(
+  sampleTree.males, 
+  colors = traitColors.males,
+  groupLabels = names(traits.males),
+  main = &quot;Males\nSample dendrogram and trait heatmap&quot;)</code></pre>
+<div class="figure" style="text-align: center">
+<img src="figure/WGCNA_2.rmd/unnamed-chunk-12-2.png" alt="No obvious outliers are observed here" width="75%" height="75%" />
+<p class="caption">
+No obvious outliers are observed here
+</p>
+</div>
+</div>
+<div id="network-construction" class="section level1">
+<h1>Network construction</h1>
+<div id="choice-of-soft-thresholding-power" class="section level2">
+<h2>Choice of soft-thresholding power</h2>
+<p>Constructing a weighted gene network requires a soft-thresholding
+power β, which will be chosen based on the scale-free topology criterion
+described by Zhang &amp; Horvath (2005). Here we perform the analysis of
+network topology for choosing a proper soft-threshold power.The
+following plots show the sufficiently high scale-free topology index
+(R2). Zhang and Hovarth stated in their framework ref that “we use the
+first parameter value where saturation is reached as long as it is above
+0.8”. Also, the mean connectivity should be not 0, otherwise nothing
+will be connected.</p>
+<p>Also, I will need to choose between a signed or unsigned network. A
+good explanation of signed vs unsigned networks is described <a
+href="https://peterlangfelder.com/2019/05/30/signed-network-from-signed-topological-overlap/">here</a>.
+However, essentially, in an <em>unsigned</em> network, genes are
+considered connected regardless of whether the correlation is positive
+or negative. Then in signed networks, the direction matters. I will
+prepare a signed network, as I think directionality is important.</p>
+<pre class="r"><code># prepare a vector with a series of candicdate poweres
+powers = c(c(1:10), seq(from = 12, to = 20, by = 2))
+
+# signed network analysis of scale-free topology
+sft.females &lt;- 
+  pickSoftThreshold(
+    input_mat.females, #  Input data 
+    powerVector = powers, 
+    networkType = &quot;signed&quot;,
+    dataIsExpr = TRUE, 
+    verbose = 5
+  )</code></pre>
+<pre><code>pickSoftThreshold: will use block size 3295.
+ pickSoftThreshold: calculating connectivity for given powers...
+   ..working on genes 1 through 3295 of 13575
+   ..working on genes 3296 through 6590 of 13575
+   ..working on genes 6591 through 9885 of 13575
+   ..working on genes 9886 through 13180 of 13575
+   ..working on genes 13181 through 13575 of 13575
+   Power SFT.R.sq   slope truncated.R.sq mean.k. median.k. max.k.
+1      1 3.61e-06   0.084          0.846  6810.0    6820.0   7130
+2      2 1.91e-01 -10.300          0.907  3710.0    3680.0   4280
+3      3 2.58e-01  -5.910          0.910  2160.0    2130.0   2820
+4      4 3.23e-01  -4.260          0.922  1330.0    1290.0   1980
+5      5 4.13e-01  -3.590          0.936   853.0     820.0   1450
+6      6 5.00e-01  -3.110          0.951   569.0     538.0   1100
+7      7 5.67e-01  -2.800          0.959   391.0     363.0    858
+8      8 6.15e-01  -2.600          0.964   277.0     252.0    683
+9      9 6.63e-01  -2.450          0.969   200.0     178.0    553
+10    10 7.12e-01  -2.330          0.978   148.0     128.0    454
+11    12 7.66e-01  -2.350          0.977    85.4      69.7    324
+12    14 8.05e-01  -2.310          0.983    52.3      39.9    240
+13    16 8.12e-01  -2.330          0.977    33.6      23.9    183
+14    18 8.27e-01  -2.290          0.978    22.5      14.9    142
+15    20 8.48e-01  -2.240          0.985    15.6       9.5    113</code></pre>
+<pre class="r"><code>sft.males &lt;- 
+  pickSoftThreshold(
+    input_mat.males, #  Input data 
+    powerVector = powers, 
+    networkType = &quot;signed&quot;,
+    dataIsExpr = TRUE, 
+    verbose = 5
+  )</code></pre>
+<pre><code>pickSoftThreshold: will use block size 3295.
+ pickSoftThreshold: calculating connectivity for given powers...
+   ..working on genes 1 through 3295 of 13575
+   ..working on genes 3296 through 6590 of 13575
+   ..working on genes 6591 through 9885 of 13575
+   ..working on genes 9886 through 13180 of 13575
+   ..working on genes 13181 through 13575 of 13575
+   Power SFT.R.sq slope truncated.R.sq mean.k. median.k. max.k.
+1      1   0.0779  4.75          0.750  6850.0    6890.0   7400
+2      2   0.2010 -6.06          0.865  3790.0    3780.0   4590
+3      3   0.2620 -4.85          0.904  2250.0    2230.0   3080
+4      4   0.2880 -3.45          0.918  1420.0    1400.0   2180
+5      5   0.3320 -2.55          0.942   931.0     919.0   1590
+6      6   0.3610 -1.96          0.956   636.0     622.0   1190
+7      7   0.4090 -1.79          0.948   448.0     432.0    933
+8      8   0.4680 -1.79          0.930   324.0     307.0    755
+9      9   0.5420 -1.75          0.943   240.0     223.0    628
+10    10   0.6090 -1.91          0.947   182.0     165.0    547
+11    12   0.7240 -2.04          0.969   110.0      93.6    426
+12    14   0.8110 -2.06          0.986    70.0      55.7    342
+13    16   0.8510 -2.09          0.984    46.8      34.4    284
+14    18   0.8800 -2.11          0.986    32.5      21.9    240
+15    20   0.9020 -2.09          0.986    23.4      14.3    206</code></pre>
+<pre class="r"><code># plot out the results
+# first define the function. 
+plot.powers = function(sft) {
+  
+  ggarrange(
+     sft$fitIndices %&gt;% 
+    ggplot(
+      aes(x = Power, y = -sign(slope) * SFT.R.sq)
+    ) +
+    geom_label(
+      aes(label = Power)
+    ) +
+    geom_hline(
+      yintercept = 0.8, 
+      colour = &quot;red&quot;) +
+    annotate(
+      geom = &quot;text&quot;, 
+      label = &quot;beta = 0.8&quot;,
+      colour = &quot;red&quot;,
+      x = 4, 
+      y = 0.75
+    ) +
+    labs(
+      x = &quot;Soft Threshold (power)&quot;,
+      y = &quot;Scale Free Topology Model Fit, signed R^2&quot;,
+      title = &quot;Scale independence&quot;
+    ), 
+  
+  sft$fitIndices %&gt;% 
+    ggplot(
+      aes(x = Power, y = mean.k.)
+    ) +
+    geom_label(
+      aes(label = Power)
+    ) +
+    geom_hline(
+      yintercept = 0, 
+      colour = &quot;red&quot;) +
+    annotate(
+      geom = &quot;text&quot;, 
+      label = &quot;k = 0&quot;,
+      colour = &quot;red&quot;,
+      x = 3, 
+      y = 190
+    ) +
+    labs(
+      x = &quot;Soft Threshold (power)&quot;,
+      y = &quot;Mean connectivity (k)&quot;,
+      title = &quot;Mean connectivity&quot; 
+  ) 
+  
+)
+  
+}
+
+plot.powers(sft = sft.males) </code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-14-1.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot.powers(sft = sft.females)</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-14-2.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+<div id="define-soft-powers" class="section level3">
+<h3>define soft powers</h3>
+<pre class="r"><code>softpower.signed = 16</code></pre>
+<p>From the 2 graphs, I will assign the soft powers for the signed
+networks as 16. This is the first value where the graphs plateau which
+is more than 0.8.</p>
+</div>
+</div>
+<div id="co-expression-adjacency" class="section level2">
+<h2>Co-expression adjacency</h2>
+<p>We now calculate the adjacency matrix, using the soft thresholding
+powers just described. This essentially takes the gene expression data
+and calculates the pairwise similarity between genes (Euclidean
+distance). This similarity measure is then transformed into an adjacency
+matrix by using the power function. (i.e. a = |s^β|)</p>
+<pre class="r"><code>adjacency.signed.females &lt;-
+  adjacency(
+    input_mat.females, 
+    type = &quot;signed&quot;, 
+    power = softpower.signed
+    )
+
+adjacency.signed.males &lt;-
+  adjacency(
+    input_mat.males, 
+    type = &quot;signed&quot;, 
+    power = softpower.signed
+    )</code></pre>
+</div>
+<div id="topological-overlap-matrix-tom" class="section level2">
+<h2>Topological Overlap Matrix (TOM)</h2>
+<p>To minimize effects of noise and spurious associations, we transform
+the adjacency into Topological Overlap Matrix, and calculate the
+corresponding dissimilarity.</p>
+<pre class="r"><code># Turn adjacency into topological overlap
+TOM.signed.males &lt;- TOMsimilarity(adjacency.signed.males)</code></pre>
+<pre><code>..connectivity..
+..matrix multiplication (system BLAS)..
+..normalization..
+..done.</code></pre>
+<pre class="r"><code>TOM.signed.females &lt;- TOMsimilarity(adjacency.signed.females)</code></pre>
+<pre><code>..connectivity..
+..matrix multiplication (system BLAS)..
+..normalization..
+..done.</code></pre>
+<pre class="r"><code>dissTOM.signed.males = 1-TOM.signed.males
+dissTOM.signed.females = 1-TOM.signed.females</code></pre>
+<p>Plotting the dissimilarity of the genes in the network reveals a lot
+of the genes with TOM between 0.9 and 1. This means that the majority of
+the genes are very connected to each other.</p>
+<pre class="r"><code># We now use hierarchial clustering to produce a hierarchial clustering tree (dendrogram) of genes using TOM
+geneTree.signed.males &lt;- 
+  hclust(as.dist(dissTOM.signed.males), method = &quot;average&quot;)
+geneTree.signed.females &lt;- 
+  hclust(as.dist(dissTOM.signed.females), method = &quot;average&quot;)
+
+par(mfrow=c(2,1))
+
+# Plot the dendrogram
+plot(geneTree.signed.males,
+     xlab = &quot;&quot;, ylab = &quot;&quot;, 
+     main = &quot;Gene clustering on TOM-based dissimilarity\nMale network&quot;,
+     labels = FALSE, hang = 0.04)
+
+plot(geneTree.signed.females,
+     xlab = &quot;&quot;, ylab = &quot;&quot;, 
+     main = &quot;Female network&quot;,
+     labels = FALSE, hang = 0.04)</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-18-1.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="define-modules" class="section level1">
+<h1>Define modules</h1>
+<p>The next step is to define the modules or clusters of genes. This is
+done using dynamic tree cut method.</p>
+<pre class="r"><code># The authors of WGCNA suggest this minimum module size to give &quot;relatively large modules&quot;
+minModuleSize = 30
+
+# Module identification using dynamic tree cut. The [arameters are set according to what the WGCNA tutorial suggests. 
+dynamicMods.signed.males &lt;- 
+  cutreeDynamic(dendro = geneTree.signed.males, 
+                distM = dissTOM.signed.males,
+                deepSplit = 2, 
+                pamRespectsDendro = FALSE,
+                minClusterSize = minModuleSize)</code></pre>
+<pre><code> ..cutHeight not given, setting it to 0.996  ===&gt;  99% of the (truncated) height range in dendro.
+ ..done.</code></pre>
+<pre class="r"><code>dynamicMods.signed.females &lt;- 
+  cutreeDynamic(dendro = geneTree.signed.females, 
+                distM = dissTOM.signed.females,
+                deepSplit = 2, 
+                pamRespectsDendro = FALSE,
+                minClusterSize = minModuleSize)</code></pre>
+<pre><code> ..cutHeight not given, setting it to 0.997  ===&gt;  99% of the (truncated) height range in dendro.
+ ..done.</code></pre>
+<pre class="r"><code># give the modules a name based off baseR colours. 
+dynamicColors.signed.females &lt;- labels2colors(dynamicMods.signed.females)
+dynamicColors.signed.males &lt;- labels2colors(dynamicMods.signed.males)</code></pre>
+<div id="raw-modules" class="section level2">
+<h2>raw modules</h2>
+<pre class="r"><code>plot_n_genes_perModule = function(dynamicColors, title) {
+  dynamicColors %&gt;%
+    as.data.frame() %&gt;% 
+    set_colnames(&quot;mod&quot;) %&gt;% 
+    group_by(mod) %&gt;% 
+    mutate(total = n()) %&gt;% 
+    ggplot(aes(x = reorder(mod, -total), fill = mod)) +
+    geom_bar(colour= &quot;black&quot;)  +
+    theme(
+      axis.text.x = element_text(
+        angle = -90, hjust = 0, vjust = 0.4
+      ),
+      plot.title = element_text(hjust = 0.5, face = &quot;bold&quot;),
+      legend.position = &quot;none&quot;
+    ) +
+    labs(
+      title = title, 
+      x = &quot;Module&quot;, 
+      y = &quot;Number of genes&quot;
+    ) +
+  scale_fill_identity() # fill the actual colours
+}
+
+plot_n_genes_perModule(dynamicColors = dynamicColors.signed.females, 
+                       title = &quot;Female modules before merging&quot;)</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-20-1.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot_n_genes_perModule(dynamicColors = dynamicColors.signed.males, 
+                       title = &quot;Male modules before merging&quot;)</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-20-2.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+<p>The next plot shows the clustering dendrogram of genes, with
+dissimilarity based on topological overlap, together with assigned
+merged module colors. There are a lot of modules here which are all over
+the dendrogram. The plots i’ve seen previously (i.e. <a
+href="https://www.google.com/search?q=wgcna+dendrogram&amp;sca_esv=592686156&amp;rlz=1C5CHFA_enAU758AU758&amp;tbm=isch&amp;sxsrf=AM9HkKkSBZcwsy5iPy7CeFt2oRp73UiS6A:1703121651127&amp;source=lnms&amp;sa=X&amp;sqi=2&amp;ved=2ahUKEwj675jIrp-DAxU6TGwGHfCTBwMQ_AUoAXoECAIQAw&amp;biw=1239&amp;bih=827&amp;dpr=1#imgrc=FAA689FFNIDKNM">here</a>)
+often show at least some blocks of module colours on the dendrogram.
+Although this is not always the case (see <a
+href="https://peterlangfelder.com/2018/12/30/why-wgcna-modules-dont-always-agree-with-the-dendrogram/">here</a>),
+as this can be a limitation of visualizing on a dendrogram.</p>
+<pre class="r"><code>plotDendroAndColors(geneTree.signed.males, 
+                    dynamicColors.signed.males, 
+                    &quot;Dynamic Tree Cut&quot;,
+                    dendroLabels = FALSE, hang = 0.03,
+                    addGuide = TRUE, guideHang = 0.05,
+                    main = &quot;Gene dendrogram and module colors\nsigned network&quot;
+)</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-21-1.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plotDendroAndColors(geneTree.signed.females, 
+                    dynamicColors.signed.females, 
+                    &quot;Dynamic Tree Cut&quot;,
+                    dendroLabels = FALSE, hang = 0.03,
+                    addGuide = TRUE, guideHang = 0.05,
+                    main = &quot;Gene dendrogram and module colors\nsigned network&quot;
+)</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-21-2.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+</div>
+<div id="merge-similar-modules" class="section level2">
+<h2>merge similar modules</h2>
+<p>The Dynamic Tree Cut may identify modules whose expression profiles
+are very similar. It may be beneficial to merge such modules since their
+genes are highly co-expressed. To quantify co-expression similarity of
+entire modules, we calculate their eigengenes and cluster them on their
+correlation.</p>
+<pre class="r"><code># calculate the eigengenes of each module
+MEList.signed.females &lt;- 
+  moduleEigengenes(
+    expr = logCPM.female.filtered %&gt;% t(), 
+    colors = dynamicColors.signed.females,
+    excludeGrey = TRUE
+  )
+
+MEList.signed.males &lt;- 
+  moduleEigengenes(
+    expr = logCPM.male.filtered %&gt;% t(), 
+    colors = dynamicColors.signed.males,
+    excludeGrey = TRUE
+  )
+
+
+# Calculate dissimilarity of module eigengenes
+MEDiss.signed.females = 1-cor(MEList.signed.females$eigengenes)
+MEDiss.signed.males = 1-cor(MEList.signed.males$eigengenes)
+
+
+# Cluster module eigengenes
+METree.signed.females = hclust(as.dist(MEDiss.signed.females), method = &quot;average&quot;)
+METree.signed.males = hclust(as.dist(MEDiss.signed.males), method = &quot;average&quot;)
+
+# Plot the result
+sizeGrWindow(7, 6)
+plot(METree.signed.females, 
+     main = &quot;Clustering of module eigengenes\n Females&quot;,
+     xlab = &quot;&quot;, sub = &quot;&quot;)
+
+plot(METree.signed.males, 
+     main = &quot;Clustering of module eigengenes\n Males&quot;,
+     xlab = &quot;&quot;, sub = &quot;&quot;)
+
+# defnine a module threshold as the same if it has more than 25% dissimilarity (i.e.. 75% similar)
+MEDissThres = 0.25
+# Plot the cut line into the dendrogram
+abline(h=MEDissThres, col = &quot;red&quot;) </code></pre>
+<p>There appear to be plenty of modules which show similarity. Here we
+define the threshold for module merging as a height &lt; 0.25 (as
+performed by authors of WGCNA). This corresponds to correlation of 0.75,
+to merge.</p>
+<pre class="r"><code># Call an automatic merging function
+merge.signed.females &lt;- mergeCloseModules(
+  t(logCPM.female.filtered), 
+  dynamicColors.signed.females, 
+  cutHeight = MEDissThres, 
+  verbose = 3)</code></pre>
+<pre><code> mergeCloseModules: Merging modules whose distance is less than 0.25
+   multiSetMEs: Calculating module MEs.
+     Working on set 1 ...
+     moduleEigengenes: Calculating 65 module eigengenes in given set.
+   multiSetMEs: Calculating module MEs.
+     Working on set 1 ...
+     moduleEigengenes: Calculating 42 module eigengenes in given set.
+   multiSetMEs: Calculating module MEs.
+     Working on set 1 ...
+     moduleEigengenes: Calculating 38 module eigengenes in given set.
+   multiSetMEs: Calculating module MEs.
+     Working on set 1 ...
+     moduleEigengenes: Calculating 37 module eigengenes in given set.
+   Calculating new MEs...
+   multiSetMEs: Calculating module MEs.
+     Working on set 1 ...
+     moduleEigengenes: Calculating 37 module eigengenes in given set.</code></pre>
+<pre class="r"><code>merge.signed.males &lt;- mergeCloseModules(
+  t(logCPM.male.filtered), 
+  dynamicColors.signed.males, 
+  cutHeight = MEDissThres, 
+  verbose = 3)</code></pre>
+<pre><code> mergeCloseModules: Merging modules whose distance is less than 0.25
+   multiSetMEs: Calculating module MEs.
+     Working on set 1 ...
+     moduleEigengenes: Calculating 48 module eigengenes in given set.
+   multiSetMEs: Calculating module MEs.
+     Working on set 1 ...
+     moduleEigengenes: Calculating 30 module eigengenes in given set.
+   multiSetMEs: Calculating module MEs.
+     Working on set 1 ...
+     moduleEigengenes: Calculating 29 module eigengenes in given set.
+   Calculating new MEs...
+   multiSetMEs: Calculating module MEs.
+     Working on set 1 ...
+     moduleEigengenes: Calculating 29 module eigengenes in given set.</code></pre>
+<pre class="r"><code># The merged module colors
+mergedColors.signed.males = merge.signed.males$colors
+mergedColors.signed.females = merge.signed.females$colors
+
+
+# Table of number of modules after merging
+
+plot_n_genes_perModule(dynamicColors = mergedColors.signed.males, 
+                       title = &quot;Males&quot;)</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-23-1.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+<pre class="r"><code>plot_n_genes_perModule(dynamicColors = mergedColors.signed.females, 
+                       title = &quot;females&quot;)</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-23-2.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+<pre class="r"><code># Cluster module eigengenes
+mergedMETree.signed.females = hclust(as.dist(MEDiss.signed.females), method = &quot;average&quot;)
+
+mergedMETree.signed.males = hclust(as.dist(MEDiss.signed.males), method = &quot;average&quot;)</code></pre>
+</div>
+<div id="gene-tree-after-merging-similar-modules"
+class="section level2">
+<h2>gene tree after merging similar modules</h2>
+<pre class="r"><code>sizeGrWindow(12, 9)
+plotDendroAndColors(
+  geneTree.signed.females, 
+  cbind(dynamicColors.signed.females, mergedColors.signed.females),
+  c(&quot;Dynamic Tree Cut&quot;, &quot;Merged dynamic&quot;),
+  dendroLabels = FALSE, hang = 0.03,
+  addGuide = TRUE, guideHang = 0.05
+)</code></pre>
+<pre class="r"><code>plotDendroAndColors(
+  geneTree.signed.males, 
+  cbind(dynamicColors.signed.males, mergedColors.signed.males),
+  c(&quot;Dynamic Tree Cut&quot;, &quot;Merged dynamic&quot;),
+  dendroLabels = FALSE, hang = 0.03,
+  addGuide = TRUE, guideHang = 0.05
+)</code></pre>
+<div class="figure" style="text-align: center">
+<img src="figure/WGCNA_2.rmd/unnamed-chunk-25-1.png" alt="male brains" width="75%" height="75%" />
+<p class="caption">
+male brains
+</p>
+</div>
+</div>
+</div>
+<div id="enrichment-analysis-of-modules" class="section level1">
+<h1>enrichment analysis of modules</h1>
+<p>I next will perform GO enrichment analysis on the merged modules to
+see if they have any biological meaning. I will do this using GO terms,
+as these have very specific or broad meaning. Since I am having trouble
+using the inbuilt functions in <code>WGCNA</code>, I will use
+<code>clusterprofiler</code> which allows me to perform a Fishers exact
+test for over representation.</p>
+<pre class="r"><code># Make a list with the gene expression by module 
+colour.names.signed.males &lt;- mergedColors.signed.males %&gt;% 
+  unique
+colour.names.signed.females &lt;- mergedColors.signed.females %&gt;% 
+  unique
+
+genesInModuleList.signed.males &lt;- 
+ colour.names.signed.males %&gt;% 
+  sapply(function(x) {
+    logCPM.male.filtered[mergedColors.signed.males==x,] %&gt;% 
+      rownames
+  }, simplify = F)
+
+genesInModuleList.signed.females &lt;- 
+ colour.names.signed.females %&gt;% 
+  sapply(function(x) {
+    logCPM.female.filtered[mergedColors.signed.females==x,] %&gt;% 
+      rownames
+  }, simplify = F)</code></pre>
+<pre class="r"><code># perform the enrichment test
+merged.moduls.male.signed.enrichment.res &lt;- 
+  genesInModuleList.signed.males %&gt;% 
+  sapply(function(y) {
+      enrichGO(
+        gene = y,
+        universe = rownames(logCPM.male.filtered),
+        OrgDb = org.Dr.eg.db,
+        keyType = &quot;ENSEMBL&quot;,
+        ont = &quot;ALL&quot;,
+        pAdjustMethod = &quot;BH&quot;,
+        pvalueCutoff  = 0.01,
+        qvalueCutoff  = 0.05,
+        readable = TRUE)
+  }, simplify = F)
+
+merged.moduls.female.signed.enrichment.res &lt;- 
+  genesInModuleList.signed.females %&gt;% 
+  sapply(function(y) {
+      enrichGO(
+        gene = y,
+        universe = rownames(logCPM.female.filtered),
+        OrgDb = org.Dr.eg.db,
+        keyType = &quot;ENSEMBL&quot;,
+        ont = &quot;ALL&quot;,
+        pAdjustMethod = &quot;BH&quot;,
+        pvalueCutoff  = 0.01,
+        qvalueCutoff  = 0.05,
+        readable = TRUE)
+  }, simplify = F)</code></pre>
+<pre class="r"><code># prepare a list with all the resultsin tibble format for ease of use. 
+merged.modules.signed.enrichment.tables &lt;- 
+  list(
+    females = merged.moduls.female.signed.enrichment.res %&gt;% 
+      lapply(function(x) {
+        x %&gt;% 
+          as_tibble 
+      }) %&gt;% 
+      imap(~ .x %&gt;% mutate(module = .y)), # add mod name from list element name
+    
+    males = merged.moduls.male.signed.enrichment.res %&gt;% 
+      lapply(function(x) {
+        x %&gt;% 
+          as_tibble 
+      }) %&gt;% 
+  imap(~ .x %&gt;% mutate(module = .y))
+  )</code></pre>
+<p>Out of the 37 modules detected in the female modules, 14 do not have
+any GO terms significantly over-represented.</p>
+<pre class="r"><code>tibble(module = unique(mergedColors.signed.females)) %&gt;% 
+  left_join(merged.modules.signed.enrichment.tables$females %&gt;% bind_rows()) %&gt;% 
+  ggplot(aes(y = module, x = -log10(p.adjust))) +
+  geom_col(
+    aes(fill = module), 
+    ) +
+  geom_text(aes(label = Description), 
+             x = 600,
+             fill = NA,
+             data = . %&gt;% 
+               dplyr::distinct(module, .keep_all = TRUE) ) +
+  scale_fill_identity() +
+  theme_bw() +
+  ggtitle(&quot;Module over-representation of GO terms in females&quot;)</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-29-1.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+<p>Out of the 29 modules detected in the female modules, 6 do not have
+any GO terms significantly over-represented.</p>
+<pre class="r"><code>tibble(module = unique(mergedColors.signed.males)) %&gt;% 
+  left_join(merged.modules.signed.enrichment.tables$males %&gt;% bind_rows()) %&gt;% 
+  ggplot(aes(y = module, x = -log10(p.adjust))) +
+  geom_col(
+    aes(fill = module), 
+    ) +
+  geom_text(aes(label = Description), 
+             x = 600,
+             fill = NA,
+             data = . %&gt;% 
+               dplyr::distinct(module, .keep_all = TRUE) ) +
+  scale_fill_identity() +
+  theme_bw() +
+  ggtitle(&quot;Module over-representation of GO terms in males&quot;)</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-30-1.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+</div>
+<div id="relate-modules-to-fish-metadata" class="section level1">
+<h1>Relate modules to fish metadata</h1>
+<p>I now want to see which modules are related to the fish metadata
+(i.e. for now, genotype and treatment). For this, I will correlate the
+merged module eigengenes with the traits of interest using Spearman
+corelation.</p>
+<pre class="r"><code># Define numbers of genes and samples
+nGenes &lt;- nrow(logCPM.male.filtered)
+nSamples.males &lt;- ncol(logCPM.male.filtered)
+nSamples.females &lt;- ncol(logCPM.female.filtered)
+
+# correlate the module eigengenes with the design matrix
+moduleTraitCor.signed.males &lt;- 
+  cor(merge.signed.males$newMEs, traits.males, use = &quot;p&quot;, method = &quot;spearman&quot;)
+
+moduleTraitCor.signed.females &lt;- 
+  cor(merge.signed.females$newMEs, traits.females, use = &quot;p&quot;, method = &quot;spearman&quot;)
+
+
+# calculate the pvals
+moduleTraitPValue.signed.males &lt;- 
+  corPvalueStudent(moduleTraitCor.signed.males, nSamples.males) %&gt;%
+  as.data.frame() %&gt;%
+  mutate(module = rownames(.))
+
+moduleTraitPValue.signed.females &lt;- 
+  corPvalueStudent(moduleTraitCor.signed.females, nSamples.females) %&gt;%
+  as.data.frame() %&gt;%
+  mutate(module = rownames(.))
+
+
+# define some interesting modules for plotting. 
+interesting.modules.males  &lt;-
+  moduleTraitPValue.signed.males %&gt;%
+  dplyr::filter_all(any_vars(. &lt; 0.05)) %&gt;%
+  rownames()
+
+interesting.modules.females  &lt;-
+  moduleTraitPValue.signed.females %&gt;%
+  dplyr::filter_all(any_vars(. &lt; 0.05)) %&gt;%
+  rownames()</code></pre>
+<div id="females" class="section level2">
+<h2>Females</h2>
+<p>In females,some modules are highly correlated with genotype, and less
+correlated in genotype x treatment, suggesting a rescue.</p>
+<pre class="r"><code># plot a heatmap showing the correlations
+moduleTraitCor.signed.females %&gt;%
+  .[interesting.modules.females,] %&gt;%
+  as.data.frame() %&gt;%
+  dplyr::select(-1) %&gt;%
+  t %&gt;% 
+  pheatmap(
+    color = colorRampPalette(rev(brewer.pal(n = 7,
+                                            name = &quot;RdBu&quot;)))(100),
+     border_color = &quot;white&quot;,
+     angle_col = 315,
+     treeheight_row = 0,
+     treeheight_col = 0,
+     clustering_distance_cols = &quot;correlation&quot;,
+
+     cluster_rows = FALSE,
+     number_color = &quot;black&quot;,
+     cellwidth = 25, cellheight = 25,
+     fontsize = 9,
+     main = &quot;Module - trait relationships - Females&quot;,
+    display_numbers = moduleTraitPValue.signed.females %&gt;%
+      .[interesting.modules.females,] %&gt;%
+      dplyr::select(-1, -module) %&gt;%
+      t %&gt;%
+      signif(1)
+  )</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-32-1.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+</div>
+<div id="plot-the-module-eigengenes" class="section level2">
+<h2>plot the module eigengenes</h2>
+<p>The eigengenes which show a significant correlation in at least one
+of the coefs are plotted below by genotype and treatent. The
+<code>blue</code>, <code>darkgrey</code> and <code>royalblue</code>
+modules look interesting may be at least trending towards
+therapeutic.</p>
+<pre class="r"><code># a function for plotting MEs
+merge.signed.females$newMEs %&gt;% 
+  as.data.frame() %&gt;% 
+  rownames_to_column(&quot;fish_id&quot;) %&gt;% 
+   dplyr::select(fish_id, interesting.modules.females) %&gt;% 
+  as_tibble %&gt;% 
+  left_join(x.females$samples) %&gt;% 
+  pivot_longer(names_to = &quot;module&quot;, values_to = &quot;ME_value&quot;, starts_with(&quot;ME&quot;)) %&gt;% 
+  ggplot(aes(x = treatment, y = ME_value, colour = genotype)) +
+  geom_boxplot() +
+  facet_wrap(~module, nrow = 2)</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-33-1.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+<div id="royalblue-module" class="section level3">
+<h3>royalblue module</h3>
+<p>Plotting out the module eigengenes across the genotypes and
+treatments shows a subtle reduction in the average expression of these
+genes after iron treatment in the MPS IIIB fish. This module was found
+to be over-represented in GO terms involving the immune system.</p>
+<pre class="r"><code>ggarrange(
+  merge.signed.females$newMEs %&gt;% 
+  as.data.frame() %&gt;% 
+  rownames_to_column(&quot;fish_id&quot;) %&gt;% 
+  dplyr::select(fish_id, MEroyalblue) %&gt;% 
+  as_tibble %&gt;% 
+  left_join(x.females$samples) %&gt;% 
+  pivot_longer(names_to = &quot;module&quot;, values_to = &quot;ME_value&quot;, starts_with(&quot;ME&quot;)) %&gt;% 
+  ggplot(aes(x = treatment, y = ME_value, colour = genotype)) +
+  geom_boxplot() +
+  labs(
+    title = paste(&quot;p =&quot;, 
+                moduleTraitPValue.signed.females[&quot;MEroyalblue&quot;,2] %&gt;% signif(2))), 
+  
+  dotplot(merged.moduls.female.signed.enrichment.res$royalblue) + 
+    ggtitle(&quot;Enriched GO terms in royalblue module&quot;)
+)</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-34-1.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+<div id="gene-significance-and-module-membership"
+class="section level4">
+<h4>Gene significance and module membership</h4>
+<p>I now want to identify genes with high gene significance and module
+membership.</p>
+<pre class="r"><code># Obtain the top hub gene in each module
+chooseTopHubInEachModule(logCPM.female.filtered %&gt;% t(), 
+                         merge.signed.females$colors,
+                        type = &quot;signed&quot;, 
+                         power = softpower.signed
+                         )</code></pre>
+<pre><code>       antiquewhite4              bisque4                black 
+&quot;ENSDARG00000078149&quot; &quot;ENSDARG00000028228&quot; &quot;ENSDARG00000057867&quot; 
+                blue               brown4               coral1 
+&quot;ENSDARG00000076571&quot; &quot;ENSDARG00000059582&quot; &quot;ENSDARG00000089043&quot; 
+              coral2                 cyan             darkgrey 
+&quot;ENSDARG00000061140&quot; &quot;ENSDARG00000002731&quot; &quot;ENSDARG00000094965&quot; 
+      darkolivegreen           darkorange          darkorange2 
+&quot;ENSDARG00000036875&quot; &quot;ENSDARG00000040314&quot; &quot;ENSDARG00000011094&quot; 
+             darkred        darkseagreen4        darkslateblue 
+&quot;ENSDARG00000068374&quot; &quot;ENSDARG00000062462&quot; &quot;ENSDARG00000041998&quot; 
+         greenyellow            honeydew1                ivory 
+&quot;ENSDARG00000018553&quot; &quot;ENSDARG00000117275&quot; &quot;ENSDARG00000101807&quot; 
+           lightcyan           lightcyan1      lightsteelblue1 
+&quot;ENSDARG00000010630&quot; &quot;ENSDARG00000035798&quot; &quot;ENSDARG00000104110&quot; 
+              maroon         mediumorchid         navajowhite2 
+&quot;ENSDARG00000017006&quot; &quot;ENSDARG00000010662&quot; &quot;ENSDARG00000055292&quot; 
+          orangered4        paleturquoise       palevioletred3 
+&quot;ENSDARG00000042641&quot; &quot;ENSDARG00000061368&quot; &quot;ENSDARG00000016396&quot; 
+                pink                plum2            royalblue 
+&quot;ENSDARG00000092799&quot; &quot;ENSDARG00000103980&quot; &quot;ENSDARG00000098114&quot; 
+             salmon4              skyblue             skyblue2 
+&quot;ENSDARG00000097492&quot; &quot;ENSDARG00000044625&quot; &quot;ENSDARG00000004094&quot; 
+                 tan             thistle1             thistle2 
+&quot;ENSDARG00000051939&quot; &quot;ENSDARG00000068432&quot; &quot;ENSDARG00000100240&quot; 
+             yellow4 
+&quot;ENSDARG00000042961&quot; </code></pre>
+<pre class="r"><code># # look at the TOM Matrix for the blue module
+# TOM.signed.females[merge.signed.females$colors == &quot;royalblue&quot;,merge.signed.females$colors == &quot;royalblue&quot;] 
+
+#logCPM.female.filtered</code></pre>
+</div>
+</div>
+<div id="dark-grey-module" class="section level3">
+<h3>dark grey module</h3>
+<p>The darkgrey module does not have any over-represented GO terms in
+it.</p>
+<pre class="r"><code>merge.signed.females$newMEs %&gt;% 
+  as.data.frame() %&gt;% 
+  rownames_to_column(&quot;fish_id&quot;) %&gt;% 
+  dplyr::select(fish_id, MEdarkgrey) %&gt;% 
+  as_tibble %&gt;% 
+  left_join(x.females$samples) %&gt;% 
+  pivot_longer(names_to = &quot;module&quot;, values_to = &quot;ME_value&quot;, starts_with(&quot;ME&quot;)) %&gt;% 
+  ggplot(aes(x = treatment, y = ME_value, colour = genotype)) +
+  geom_boxplot()</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-36-1.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+</div>
+<div id="blue-module" class="section level3">
+<h3>blue module</h3>
+<p>This module is enriched in synaptic genes, which appear to improve
+after iron treatment!!!</p>
+<pre class="r"><code>ggarrange(
+  merge.signed.females$newMEs %&gt;% 
+  as.data.frame() %&gt;% 
+  rownames_to_column(&quot;fish_id&quot;) %&gt;% 
+  dplyr::select(fish_id, MEblue) %&gt;% 
+  as_tibble %&gt;% 
+  left_join(x.females$samples) %&gt;% 
+  pivot_longer(names_to = &quot;module&quot;, values_to = &quot;ME_value&quot;, starts_with(&quot;ME&quot;)) %&gt;% 
+  ggplot(aes(x = treatment, y = ME_value, colour = genotype)) +
+  geom_boxplot() +
+  ggtitle(&quot;Blue module&quot;), 
+  
+  dotplot(merged.moduls.female.signed.enrichment.res$blue)
+)</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-37-1.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+<div id="males" class="section level2">
+<h2>males</h2>
+<p>In males, there doesnt seem to be much changes in the correlation of
+genotype and treatment.</p>
+<pre class="r"><code># plot a heatmap showing the correlations
+moduleTraitCor.signed.males %&gt;%
+  .[interesting.modules.males,] %&gt;%
+  as.data.frame() %&gt;%
+  dplyr::select(-1) %&gt;%
+  t %&gt;% 
+  pheatmap(
+    color = colorRampPalette(rev(brewer.pal(n = 7,
+                                            name = &quot;RdBu&quot;)))(100),
+     border_color = &quot;white&quot;,
+     angle_col = 315,
+     treeheight_row = 0,
+     treeheight_col = 0,
+     clustering_distance_cols = &quot;correlation&quot;,
+
+     cluster_rows = FALSE,
+     number_color = &quot;black&quot;,
+     cellwidth = 25, cellheight = 25,
+     fontsize = 9,
+     main = &quot;Module - trait relationships - Females&quot;,
+    display_numbers = moduleTraitPValue.signed.males %&gt;%
+      .[interesting.modules.males,] %&gt;%
+      dplyr::select(-1, -module) %&gt;%
+      t %&gt;%
+      signif(1)
+  )</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-38-1.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+</div>
+<div id="plot-the-module-eigengenes-1" class="section level2">
+<h2>plot the module eigengenes</h2>
+<p>The eigengenes which show a significant correlation in at least one
+of the coefs are plotted below by genotype and treatent. The
+<code>orangered4</code> and <code>yellowgreen</code> modules show some
+suble trends towards rescue. But the <code>plum1</code> and
+<code>cyan</code> modules look more significantly perturbed.</p>
+<pre class="r"><code># a function for plotting MEs
+merge.signed.males$newMEs %&gt;% 
+  as.data.frame() %&gt;% 
+  rownames_to_column(&quot;fish_id&quot;) %&gt;% 
+   dplyr::select(fish_id, interesting.modules.males) %&gt;% 
+  as_tibble %&gt;% 
+  left_join(x.males$samples) %&gt;% 
+  pivot_longer(names_to = &quot;module&quot;, values_to = &quot;ME_value&quot;, starts_with(&quot;ME&quot;)) %&gt;% 
+  ggplot(aes(x = treatment, y = ME_value, colour = genotype)) +
+  geom_boxplot() +
+  facet_wrap(~module, nrow = 2)</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-39-1.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+<div id="orangered4-module" class="section level3">
+<h3>orangered4 module</h3>
+<pre class="r"><code>ggarrange(
+  merge.signed.males$newMEs %&gt;% 
+  as.data.frame() %&gt;% 
+  rownames_to_column(&quot;fish_id&quot;) %&gt;% 
+  dplyr::select(fish_id, MEorangered4) %&gt;% 
+  as_tibble %&gt;% 
+  left_join(x.males$samples) %&gt;% 
+  pivot_longer(names_to = &quot;module&quot;, values_to = &quot;ME_value&quot;, starts_with(&quot;ME&quot;)) %&gt;% 
+  ggplot(aes(x = treatment, y = ME_value, colour = genotype)) +
+  geom_boxplot(), 
+  
+  barplot(merged.moduls.male.signed.enrichment.res$orangered4)
+)</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-40-1.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+</div>
+<div id="yellowgreen-module" class="section level3">
+<h3>yellowgreen module</h3>
+<pre class="r"><code>ggarrange(
+  merge.signed.males$newMEs %&gt;% 
+  as.data.frame() %&gt;% 
+  rownames_to_column(&quot;fish_id&quot;) %&gt;% 
+  dplyr::select(fish_id, MEyellowgreen) %&gt;% 
+  as_tibble %&gt;% 
+  left_join(x.males$samples) %&gt;% 
+  pivot_longer(names_to = &quot;module&quot;, values_to = &quot;ME_value&quot;, starts_with(&quot;ME&quot;)) %&gt;% 
+  ggplot(aes(x = treatment, y = ME_value, colour = genotype)) +
+  geom_boxplot(), 
+  
+  barplot(merged.moduls.male.signed.enrichment.res$yellowgreen)
+)</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-41-1.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+</div>
+<div id="plum1-module" class="section level3">
+<h3>plum1 module</h3>
+<p>This supports that inflammation increased after iron supplementation
+in males.</p>
+<pre class="r"><code>ggarrange(
+  merge.signed.males$newMEs %&gt;% 
+  as.data.frame() %&gt;% 
+  rownames_to_column(&quot;fish_id&quot;) %&gt;% 
+  dplyr::select(fish_id, MEplum1) %&gt;% 
+  as_tibble %&gt;% 
+  left_join(x.males$samples) %&gt;% 
+  pivot_longer(names_to = &quot;module&quot;, values_to = &quot;ME_value&quot;, starts_with(&quot;ME&quot;)) %&gt;% 
+  ggplot(aes(x = treatment, y = ME_value, colour = genotype)) +
+  geom_boxplot(), 
+  
+  barplot(merged.moduls.male.signed.enrichment.res$plum1)
+)</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-42-1.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+</div>
+<div id="cyan-module" class="section level3">
+<h3>cyan module</h3>
+<p>No GO terms were over-represented in this module.</p>
+<pre class="r"><code>ggarrange(
+  merge.signed.males$newMEs %&gt;% 
+  as.data.frame() %&gt;% 
+  rownames_to_column(&quot;fish_id&quot;) %&gt;% 
+  dplyr::select(fish_id, MEcyan) %&gt;% 
+  as_tibble %&gt;% 
+  left_join(x.males$samples) %&gt;% 
+  pivot_longer(names_to = &quot;module&quot;, values_to = &quot;ME_value&quot;, starts_with(&quot;ME&quot;)) %&gt;% 
+  ggplot(aes(x = treatment, y = ME_value, colour = genotype)) +
+  geom_boxplot())</code></pre>
+<p><img src="figure/WGCNA_2.rmd/unnamed-chunk-43-1.png" width="75%" height="75%" style="display: block; margin: auto;" /></p>
+</div>
+</div>
+</div>
+<div id="module-preservation-between-sexes" class="section level1">
+<h1>Module preservation between sexes</h1>
+<br>
+<p>
+<button type="button" class="btn btn-default btn-workflowr btn-workflowr-sessioninfo" data-toggle="collapse" data-target="#workflowr-sessioninfo" style="display: block;">
+<span class="glyphicon glyphicon-wrench" aria-hidden="true"></span>
+Session information
+</button>
+</p>
+<div id="workflowr-sessioninfo" class="collapse">
+<pre class="r"><code>sessionInfo()</code></pre>
+<pre><code>R version 4.3.2 (2023-10-31)
+Platform: aarch64-apple-darwin20 (64-bit)
+Running under: macOS Sonoma 14.3
+
+Matrix products: default
+BLAS:   /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/lib/libRblas.0.dylib 
+LAPACK: /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/lib/libRlapack.dylib;  LAPACK version 3.11.0
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+time zone: Australia/Adelaide
+tzcode source: internal
+
+attached base packages:
+[1] stats4    stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+ [1] edgeR_4.0.16           limma_3.58.1           matrixStats_1.2.0     
+ [4] msigdbr_7.5.1          clusterProfiler_4.10.0 org.Dr.eg.db_3.18.0   
+ [7] topGO_2.54.0           SparseM_1.81           GO.db_3.18.0          
+[10] AnnotationDbi_1.64.1   IRanges_2.36.0         S4Vectors_0.40.2      
+[13] Biobase_2.62.0         graph_1.80.0           BiocGenerics_0.48.1   
+[16] WGCNA_1.72-5           fastcluster_1.2.6      dynamicTreeCut_1.63-1 
+[19] igraph_2.0.2           colorspace_2.1-0       RColorBrewer_1.1-3    
+[22] ggforce_0.4.2          ggfortify_0.4.16       ggrepel_0.9.5         
+[25] ggpubr_0.6.0           pheatmap_1.0.12        scales_1.3.0          
+[28] UpSetR_1.4.0           kableExtra_1.4.0       pander_0.6.5          
+[31] readxl_1.4.3           magrittr_2.0.3         lubridate_1.9.3       
+[34] forcats_1.0.0          stringr_1.5.1          dplyr_1.1.4           
+[37] purrr_1.0.2            readr_2.1.5            tidyr_1.3.1           
+[40] tibble_3.2.1           ggplot2_3.5.0          tidyverse_2.0.0       
+
+loaded via a namespace (and not attached):
+  [1] fs_1.6.3                      bitops_1.0-7                 
+  [3] enrichplot_1.22.0             HDO.db_0.99.1                
+  [5] httr_1.4.7                    doParallel_1.0.17            
+  [7] tools_4.3.2                   backports_1.4.1              
+  [9] utf8_1.2.4                    R6_2.5.1                     
+ [11] lazyeval_0.2.2                withr_3.0.0                  
+ [13] gridExtra_2.3                 preprocessCore_1.64.0        
+ [15] cli_3.6.2                     scatterpie_0.2.1             
+ [17] labeling_0.4.3                sass_0.4.8                   
+ [19] systemfonts_1.0.5             yulab.utils_0.1.4            
+ [21] gson_0.1.0                    foreign_0.8-86               
+ [23] DOSE_3.28.2                   svglite_2.1.3                
+ [25] rstudioapi_0.15.0             impute_1.76.0                
+ [27] RSQLite_2.3.5                 generics_0.1.3               
+ [29] gridGraphics_0.5-1            car_3.1-2                    
+ [31] Matrix_1.6-5                  fansi_1.0.6                  
+ [33] abind_1.4-5                   lifecycle_1.0.4              
+ [35] yaml_2.3.8                    carData_3.0-5                
+ [37] qvalue_2.34.0                 BiocFileCache_2.10.1         
+ [39] grid_4.3.2                    blob_1.2.4                   
+ [41] promises_1.2.1                crayon_1.5.2                 
+ [43] lattice_0.22-5                cowplot_1.1.3                
+ [45] KEGGREST_1.42.0               pillar_1.9.0                 
+ [47] knitr_1.45                    fgsea_1.28.0                 
+ [49] codetools_0.2-19              fastmatch_1.1-4              
+ [51] glue_1.7.0                    ggfun_0.1.4                  
+ [53] data.table_1.15.0             vctrs_0.6.5                  
+ [55] png_0.1-8                     treeio_1.26.0                
+ [57] cellranger_1.1.0              gtable_0.3.4                 
+ [59] cachem_1.0.8                  xfun_0.42                    
+ [61] mime_0.12                     tidygraph_1.3.1              
+ [63] survival_3.5-8                iterators_1.0.14             
+ [65] statmod_1.5.0                 interactiveDisplayBase_1.40.0
+ [67] ellipsis_0.3.2                nlme_3.1-164                 
+ [69] ggtree_3.10.1                 bit64_4.0.5                  
+ [71] filelock_1.0.3                GenomeInfoDb_1.38.6          
+ [73] rprojroot_2.0.4               bslib_0.6.1                  
+ [75] rpart_4.1.23                  DBI_1.2.2                    
+ [77] Hmisc_5.1-1                   nnet_7.3-19                  
+ [79] tidyselect_1.2.0              bit_4.0.5                    
+ [81] compiler_4.3.2                curl_5.2.0                   
+ [83] git2r_0.33.0                  htmlTable_2.4.2              
+ [85] xml2_1.3.6                    shadowtext_0.1.3             
+ [87] checkmate_2.3.1               rappdirs_0.3.3               
+ [89] digest_0.6.34                 rmarkdown_2.25               
+ [91] XVector_0.42.0                htmltools_0.5.7              
+ [93] pkgconfig_2.0.3               base64enc_0.1-3              
+ [95] highr_0.10                    dbplyr_2.4.0                 
+ [97] fastmap_1.1.1                 rlang_1.1.3                  
+ [99] htmlwidgets_1.6.4             shiny_1.8.0                  
+[101] farver_2.1.1                  jquerylib_0.1.4              
+[103] jsonlite_1.8.8                BiocParallel_1.36.0          
+[105] GOSemSim_2.28.1               RCurl_1.98-1.14              
+[107] Formula_1.2-5                 GenomeInfoDbData_1.2.11      
+[109] ggplotify_0.1.2               patchwork_1.2.0              
+[111] munsell_0.5.0                 Rcpp_1.0.12                  
+[113] ape_5.7-1                     babelgene_22.9               
+[115] viridis_0.6.5                 stringi_1.8.3                
+[117] ggraph_2.2.0                  zlibbioc_1.48.0              
+[119] MASS_7.3-60.0.1               AnnotationHub_3.10.0         
+[121] plyr_1.8.9                    parallel_4.3.2               
+[123] Biostrings_2.70.2             graphlayouts_1.1.0           
+[125] splines_4.3.2                 hms_1.1.3                    
+[127] locfit_1.5-9.8                ggsignif_0.6.4               
+[129] reshape2_1.4.4                BiocVersion_3.18.1           
+[131] evaluate_0.23                 BiocManager_1.30.22          
+[133] tzdb_0.4.0                    foreach_1.5.2                
+[135] tweenr_2.0.2                  httpuv_1.6.14                
+[137] polyclip_1.10-6               broom_1.0.5                  
+[139] xtable_1.8-4                  tidytree_0.4.6               
+[141] rstatix_0.7.2                 later_1.3.2                  
+[143] viridisLite_0.4.2             aplot_0.2.2                  
+[145] memoise_2.0.1                 cluster_2.1.6                
+[147] workflowr_1.7.1               timechange_0.3.0             </code></pre>
+</div>
+</div>
+
+
+<!-- Adjust MathJax settings so that all math formulae are shown using
+TeX fonts only; see
+https://docs.mathjax.org/en/latest/web/configuration.html. This will make
+the presentation more consistent at the cost of the webpage sometimes
+taking slightly longer to load. Note that this only works because the
+footer is added to webpages before the MathJax javascript. -->
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+    "HTML-CSS": { availableFonts: ["TeX"] }
+  });
+</script>
+
+
+
+
+</div>
+</div>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+function bootstrapStylePandocTables() {
+  $('tr.odd').parent('tbody').parent('table').addClass('table table-condensed');
+}
+$(document).ready(function () {
+  bootstrapStylePandocTables();
+});
+
+
+</script>
+
+<!-- tabsets -->
+
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+
+$(document).ready(function () {
+  $('.tabset-dropdown > .nav-tabs > li').click(function () {
+    $(this).parent().toggleClass('nav-tabs-open');
+  });
+});
+</script>
+
+<!-- code folding -->
+<script>
+$(document).ready(function () {
+  window.initializeCodeFolding("hide" === "show");
+});
+</script>
+
+<script>
+$(document).ready(function ()  {
+
+    // temporarily add toc-ignore selector to headers for the consistency with Pandoc
+    $('.unlisted.unnumbered').addClass('toc-ignore')
+
+    // move toc-ignore selectors from section div to header
+    $('div.section.toc-ignore')
+        .removeClass('toc-ignore')
+        .children('h1,h2,h3,h4,h5').addClass('toc-ignore');
+
+    // establish options
+    var options = {
+      selectors: "h1,h2,h3",
+      theme: "bootstrap3",
+      context: '.toc-content',
+      hashGenerator: function (text) {
+        return text.replace(/[.\\/?&!#<>]/g, '').replace(/\s/g, '_');
+      },
+      ignoreSelector: ".toc-ignore",
+      scrollTo: 0
+    };
+    options.showAndHide = true;
+    options.smoothScroll = true;
+
+    // tocify
+    var toc = $("#TOC").tocify(options).data("toc-tocify");
+});
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
