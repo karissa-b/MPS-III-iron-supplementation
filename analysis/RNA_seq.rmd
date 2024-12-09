@@ -50,40 +50,6 @@ library(pander)
 
 theme_set(theme_classic())
 
-#### ~~~~ FUNCTIONS ~~~~ #### 
-
-## plot out logCPMs
-plotLogCPMheatmap <- function(geneset, plottitle) {
-  logCPM %>% 
-  .[geneset,] %>% 
-  as.data.frame() %>% 
-  dplyr::select(
-    x$samples %>% dplyr::filter(group == "het_control_female") %>% .$sample, 
-    x$samples %>% dplyr::filter(group == "hom_control_female") %>% .$sample, 
-    #x$samples %>% dplyr::filter(group == "het_iron_female") %>% .$sample, 
-    x$samples %>% dplyr::filter(group == "hom_iron_female") %>% .$sample,
-    x$samples %>% dplyr::filter(group == "het_control_male") %>% .$sample,
-    x$samples %>% dplyr::filter(group == "hom_control_male") %>% .$sample,
-    # x$samples %>% dplyr::filter(group == "het_iron_male") %>% .$sample,
-    x$samples %>% dplyr::filter(group == "hom_iron_male") %>% .$sample
-    )%>% 
-  pheatmap(
-    cluster_cols = FALSE, 
-    gaps_col = c(2,2,9,9,14,14,22,22, 25,25),
-    annotation_col = anno, 
-    color = viridis_pal(option = "magma")(100), 
-    scale = "row", 
-    annotation_colors = list(
-      genotype = c(het = "yellow", 
-                   hom ="orange"),
-      treatment2 = c(`control`= "white", 
-                    `iron` ="black"),
-      sex = c(male = "blue", 
-              female = "red")),
-    main = plottitle
-    )
-}
-
 ```
 
 ## Introduction
@@ -1261,22 +1227,22 @@ GO <-
   msigdbr("Danio rerio", category = "C5") %>% 
   dplyr::filter(grepl(gs_name, pattern = "^GO")) %>% 
   left_join(x$genes, by = c("ensembl_gene" = "gene_id")) %>% 
-  dplyr::filter(ensembl_gene %in% rownames(x)) %>% 
-  mutate(
-    gs_name = str_replace(gs_name, 
-                          pattern = "GOBP_", 
-                          replacement = "GO_")
-    ) %>% 
-  mutate(
-    gs_name = str_replace(gs_name, 
-                          pattern = "GOMF_",
-                          replacement = "GO_")
-    ) %>%     
-  mutate(
-    gs_name = str_replace(gs_name,
-                          pattern = "GOCC_", 
-                          replacement = "GO_")
-    ) %>%     
+  # dplyr::filter(ensembl_gene %in% rownames(x)) %>% 
+  # mutate(
+  #   gs_name = str_replace(gs_name, 
+  #                         pattern = "GOBP_", 
+  #                         replacement = "GO_")
+  #   ) %>% 
+  # mutate(
+  #   gs_name = str_replace(gs_name, 
+  #                         pattern = "GOMF_",
+  #                         replacement = "GO_")
+  #   ) %>%     
+  # mutate(
+  #   gs_name = str_replace(gs_name,
+  #                         pattern = "GOCC_", 
+  #                         replacement = "GO_")
+  #   ) %>%     
   left_join(goSummaries) %>% 
   dplyr::filter(shortest_path >= minPath) %>%
   distinct(gs_name, ensembl_gene, .keep_all = TRUE) %>% 
@@ -1317,6 +1283,43 @@ ire <- read_rds("data/RNAseq/gene_sets/zebrafishIreGenes.rds") %>%
       dplyr::filter(temp %in% rownames(x)) %>% 
       .$temp
   })
+
+anno <- x$samples %>% 
+  dplyr::select(fish_id, treatment2, genotype, sex) %>% 
+  remove_rownames() %>% 
+  column_to_rownames("fish_id")
+
+## plot out logCPMs
+plotLogCPMheatmap <- function(geneset, plottitle) {
+  logCPM %>% 
+  .[geneset,] %>% 
+  as.data.frame() %>% 
+  dplyr::select(
+    x$samples %>% dplyr::filter(group == "het_control_female") %>% .$sample, 
+    x$samples %>% dplyr::filter(group == "hom_control_female") %>% .$sample, 
+    #x$samples %>% dplyr::filter(group == "het_iron_female") %>% .$sample, 
+    x$samples %>% dplyr::filter(group == "hom_iron_female") %>% .$sample,
+    x$samples %>% dplyr::filter(group == "het_control_male") %>% .$sample,
+    x$samples %>% dplyr::filter(group == "hom_control_male") %>% .$sample,
+    # x$samples %>% dplyr::filter(group == "het_iron_male") %>% .$sample,
+    x$samples %>% dplyr::filter(group == "hom_iron_male") %>% .$sample
+    )%>% 
+  pheatmap(
+    cluster_cols = FALSE, 
+    gaps_col = c(2,2,9,9,14,14,22,22, 25,25),
+    annotation_col = anno, 
+    color = viridis_pal(option = "magma")(100), 
+    scale = "row", 
+    annotation_colors = list(
+      genotype = c(het = "yellow", 
+                   hom ="orange"),
+      treatment2 = c(`control`= "white", 
+                    `iron` ="black"),
+      sex = c(male = "blue", 
+              female = "red")),
+    main = plottitle
+    )
+}
 ```
 
 ## GOSEQ
@@ -1343,7 +1346,8 @@ pwfs <- toptables_cqn %>%
 goseqResults <- 
   pwfs %>% 
   sapply(function(y) {
-    goseq(y, gene2cat = c(GO, ire, cell_type_markers, KEGG_gene)) %>% 
+    goseq(y, gene2cat = GO) %>% 
+          #c(GO, ire, cell_type_markers, KEGG_gene)) %>% 
       as_tibble() %>% 
       dplyr::filter(numDEInCat > 0) %>% 
       mutate(FDR = p.adjust(over_represented_pvalue, method = "fdr")) %>% 
@@ -1353,6 +1357,8 @@ goseqResults <-
 # add the names to the goseq file
 mynames <- names(goseqResults)
 goseqResults <- map2(goseqResults, mynames, ~.x %>% mutate(coef = .y))
+
+
 ```
 
 First, will plot th numebr of GO terms
@@ -1448,7 +1454,7 @@ goseqResults$`hom_iron_male - het_control_male` %>%
 
 ```{r}
 
-plotLogCPMheatmap(GO$GO_INTERLEUKIN_27_MEDIATED_SIGNALING_PATHWAY, "GO_INTERLEUKIN_27_MEDIATED_SIGNALING_PATHWAY")
+#plotLogCPMheatmap(GO$GO_INTERLEUKIN_27_MEDIATED_SIGNALING_PATHWAY, "GO_INTERLEUKIN_27_MEDIATED_SIGNALING_PATHWAY")
 
 
 
@@ -1603,81 +1609,77 @@ fry.kegg %>%
 ```
 
 ```{r}
-anno <- x$samples %>% 
-  dplyr::select(fish_id, treatment2, genotype, sex) %>% 
-  remove_rownames() %>% 
-  column_to_rownames("fish_id")
 
-logCPM %>% 
-  .[KEGG$KEGG_OXIDATIVE_PHOSPHORYLATION,] %>% 
-  as.data.frame() %>% 
-  pheatmap(
-    annotation_col = anno, 
-    color = colorRampPalette(rev(brewer.pal(n = 5,
-                                                   name = "RdBu")))(100), 
-    #scale = "row"
-    )
+# logCPM %>% 
+#   .[KEGG$KEGG_OXIDATIVE_PHOSPHORYLATION,] %>% 
+#   as.data.frame() %>% 
+#   pheatmap(
+#     annotation_col = anno, 
+#     color = colorRampPalette(rev(brewer.pal(n = 5,
+#                                                    name = "RdBu")))(100), 
+#     #scale = "row"
+#     )
 
 #png("output/RNAseqPlotsFinalReport/KEGG_ANTIGEN_PROCESSING_AND_PRESENTATION.png", width = 20, height = 20, 
     #units = "cm", res = 300)
-toptables_cqn %>% 
-  bind_rows() %>% 
-    dplyr::filter(gene_id %in% KEGG$KEGG_OXIDATIVE_PHOSPHORYLATION) %>% 
-  dplyr::filter(coef %in% c(
-    "hom_control_female - het_control_female", # DEGs due to MPS IIIB geno
-    "hom_iron_female - het_control_female",  # rescue comparison
-    
-    "hom_control_male - het_control_male", # DEGs due to MPS IIIB geno
-    "hom_iron_male - het_control_male"
-  )) %>% 
-  dplyr::select(gene_name, logFC, coef) %>% 
-  dplyr::distinct(gene_name, coef, .keep_all = TRUE) %>% 
-  spread(key = "coef", value = "logFC") %>% 
-  column_to_rownames("gene_name") %>% 
-  dplyr::select("hom_control_female - het_control_female",
-                "hom_iron_female - het_control_female",  # rescue comparison
-                
-                "hom_control_male - het_control_male", # DEGs due to MPS IIIB geno
-                "hom_iron_male - het_control_male"
-                ) %>% 
-  t %>% 
-  pheatmap(angle = 315, 
-           colorRampPalette(rev(brewer.pal(n = 5,
-                                                   name = "RdBu")))(100), 
-           breaks = seq(from = -1, to = 1, length.out = 100),
-           fontsize = 8,
-           cluster_rows = F,
-           cellheight = 15,
-           gaps_row = 2, 
-           main= "KEGG_ANTIGEN_PROCESSING_AND_PRESENTATION"
-           )
+# toptables_cqn %>% 
+#   bind_rows() %>% 
+#     dplyr::filter(gene_id %in% KEGG$KEGG_OXIDATIVE_PHOSPHORYLATION) %>% 
+#   dplyr::filter(coef %in% c(
+#     "hom_control_female - het_control_female", # DEGs due to MPS IIIB geno
+#     "hom_iron_female - het_control_female",  # rescue comparison
+#     
+#     "hom_control_male - het_control_male", # DEGs due to MPS IIIB geno
+#     "hom_iron_male - het_control_male"
+#   )) %>% 
+#   dplyr::select(gene_name, logFC, coef) %>% 
+#   dplyr::distinct(gene_name, coef, .keep_all = TRUE) %>% 
+#   spread(key = "coef", value = "logFC") %>% 
+#   column_to_rownames("gene_name") %>% 
+#   dplyr::select("hom_control_female - het_control_female",
+#                 "hom_iron_female - het_control_female",  # rescue comparison
+#                 
+#                 "hom_control_male - het_control_male", # DEGs due to MPS IIIB geno
+#                 "hom_iron_male - het_control_male"
+#                 ) %>% 
+#   t %>% 
+#   pheatmap(angle = 315, 
+#            colorRampPalette(rev(brewer.pal(n = 5,
+#                                                    name = "RdBu")))(100), 
+#            breaks = seq(from = -1, to = 1, length.out = 100),
+#            fontsize = 8,
+#            cluster_rows = F,
+#            cellheight = 15,
+#            gaps_row = 2, 
+#            main= "KEGG_ANTIGEN_PROCESSING_AND_PRESENTATION"
+#            )
 #dev.off()
 
-
-toptable_1 %>% 
-  bind_rows() %>% 
-  dplyr::filter(gene_id %in% GO$GO_IRON_ION_HOMEOSTASIS) %>% 
-  dplyr::filter(coef %in% c(
-    "hom_control_female - het_control_female", # DEGs due to MPS IIIB geno
-    "hom_iron_female - het_control_female",  # rescue comparison
-    
-    "hom_control_male - het_control_male", # DEGs due to MPS IIIB geno
-    "hom_iron_male - het_control_male"
-  )) %>% 
-  dplyr::select(gene_name, logFC, coef) %>% 
-  dplyr::distinct(gene_name, coef, .keep_all = TRUE) %>% 
-  spread(key = "coef", value = "logFC") %>% 
-  dplyr::select(contains("female"), contains("male"), everything()) %>% 
-  column_to_rownames("gene_name") %>% 
-  
-  pheatmap(angle = 315, 
-           colorRampPalette(rev(brewer.pal(n = 5,
-                                           name = "RdBu")))(100), 
-           breaks = seq(from = -2, to = 2, length.out = 100),
-           fontsize = 6, 
-           cluster_cols = F, 
-           gaps_col = 2
-  )
+# 
+# toptable_1 %>% 
+#   bind_rows() %>% 
+#   dplyr::filter(gene_id %in% GO$GO_IRON_ION_HOMEOSTASIS) %>% 
+#   dplyr::filter(coef %in% c(
+#     "hom_control_female - het_control_female", # DEGs due to MPS IIIB geno
+#     "hom_iron_female - het_control_female",  # rescue comparison
+#     
+#     "hom_control_male - het_control_male", # DEGs due to MPS IIIB geno
+#     "hom_iron_male - het_control_male"
+#   )) %>% 
+#   dplyr::select(gene_name, logFC, coef) %>% 
+#   dplyr::distinct(gene_name, coef, .keep_all = TRUE) %>% 
+#   spread(key = "coef", value = "logFC") %>% 
+#   dplyr::select(contains("female"), contains("male"), everything()) %>% 
+#   column_to_rownames("gene_name") %>% 
+#   
+#   pheatmap(angle = 315, 
+#            colorRampPalette(rev(brewer.pal(n = 5,
+#                                            name = "RdBu")))(100), 
+#            breaks = seq(from = -2, to = 2, length.out = 100),
+#            fontsize = 6, 
+#            cluster_cols = F, 
+#            gaps_col = 2
+#   )
 ```
 
 # IRE gene sets
@@ -1749,32 +1751,32 @@ fry.ire[c(
 # plot out expression changes
 
 ```{r}
-toptables_cqn %>% 
-  bind_rows() %>% 
-  dplyr::filter(gene_id %in% KEGG_gene$Lysosome) %>% 
-  dplyr::select(gene_name, logFC, coef) %>% 
-  dplyr::distinct(gene_name, coef, .keep_all = TRUE) %>% 
-  spread(key = "coef", value = "logFC") %>% 
-  column_to_rownames("gene_name") %>% 
-  dplyr::select("hom_control_female - het_control_female",
-                "hom_iron_female - hom_control_female",  
-                "hom_iron_female - het_control_female",  # rescue comparison
-                
-                "hom_control_male - het_control_male", # DEGs due to MPS IIIB geno
-                "hom_iron_male - het_control_male", 
-                "hom_iron_male - hom_control_male"
-                
-                ) %>%
-  t %>% 
-  pheatmap(angle = 315, 
-           colorRampPalette(rev(brewer.pal(n = 5,
-                                                   name = "RdBu")))(100), 
-           breaks = seq(from = -1, to = 1, length.out = 100),
-           fontsize = 8,
-           cluster_rows = F,
-           cellheight = 15
-           #main= "KEGG_ANTIGEN_PROCESSING_AND_PRESENTATION"
-           )
+# toptables_cqn %>% 
+#   bind_rows() %>% 
+#   dplyr::filter(gene_id %in% KEGG_gene$Lysosome) %>% 
+#   dplyr::select(gene_name, logFC, coef) %>% 
+#   dplyr::distinct(gene_name, coef, .keep_all = TRUE) %>% 
+#   spread(key = "coef", value = "logFC") %>% 
+#   column_to_rownames("gene_name") %>% 
+#   dplyr::select("hom_control_female - het_control_female",
+#                 "hom_iron_female - hom_control_female",  
+#                 "hom_iron_female - het_control_female",  # rescue comparison
+#                 
+#                 "hom_control_male - het_control_male", # DEGs due to MPS IIIB geno
+#                 "hom_iron_male - het_control_male", 
+#                 "hom_iron_male - hom_control_male"
+#                 
+#                 ) %>%
+#   t %>% 
+#   pheatmap(angle = 315, 
+#            colorRampPalette(rev(brewer.pal(n = 5,
+#                                                    name = "RdBu")))(100), 
+#            breaks = seq(from = -1, to = 1, length.out = 100),
+#            fontsize = 8,
+#            cluster_rows = F,
+#            cellheight = 15
+#            #main= "KEGG_ANTIGEN_PROCESSING_AND_PRESENTATION"
+#            )
 ```
 
 
@@ -1878,7 +1880,7 @@ camera.kegg[c(
 ```
 
 ```{r}
-plotLogCPMheatmap(KEGG_gene$Apoptosis, "Apoptosis")
+#plotLogCPMheatmap(KEGG_gene$Apoptosis, "Apoptosis")
 ```
 
 
@@ -1925,33 +1927,33 @@ camera.kegg[c(
 
 ## plot out logCPMs
 ```{r}
-plotLogCPMheatmap <- function(geneset, plottitle) {
-  logCPM %>% 
-  .[geneset,] %>% 
-  as.data.frame() %>% 
-  dplyr::select(
-    x$samples %>% dplyr::filter(group == "het_control_female") %>% .$sample, 
-    x$samples %>% dplyr::filter(group == "hom_control_female") %>% .$sample, 
-    #x$samples %>% dplyr::filter(group == "het_iron_female") %>% .$sample, 
-    x$samples %>% dplyr::filter(group == "hom_iron_female") %>% .$sample,
-    x$samples %>% dplyr::filter(group == "het_control_male") %>% .$sample,
-    x$samples %>% dplyr::filter(group == "hom_control_male") %>% .$sample,
-    # x$samples %>% dplyr::filter(group == "het_iron_male") %>% .$sample,
-    x$samples %>% dplyr::filter(group == "hom_iron_male") %>% .$sample
-    )%>% 
-  pheatmap(
-    cluster_cols = FALSE, 
-    gaps_col = c(2,2,9,9,14,14,22,22, 25,25),
-    annotation_col = anno, 
-    color = viridis_pal(option = "magma")(100), 
-    scale = "row", 
-    main = plottitle
-    )
-}
+# plotLogCPMheatmap <- function(geneset, plottitle) {
+#   logCPM %>% 
+#   .[geneset,] %>% 
+#   as.data.frame() %>% 
+#   dplyr::select(
+#     x$samples %>% dplyr::filter(group == "het_control_female") %>% .$sample, 
+#     x$samples %>% dplyr::filter(group == "hom_control_female") %>% .$sample, 
+#     #x$samples %>% dplyr::filter(group == "het_iron_female") %>% .$sample, 
+#     x$samples %>% dplyr::filter(group == "hom_iron_female") %>% .$sample,
+#     x$samples %>% dplyr::filter(group == "het_control_male") %>% .$sample,
+#     x$samples %>% dplyr::filter(group == "hom_control_male") %>% .$sample,
+#     # x$samples %>% dplyr::filter(group == "het_iron_male") %>% .$sample,
+#     x$samples %>% dplyr::filter(group == "hom_iron_male") %>% .$sample
+#     )%>% 
+#   pheatmap(
+#     cluster_cols = FALSE, 
+#     gaps_col = c(2,2,9,9,14,14,22,22, 25,25),
+#     annotation_col = anno, 
+#     color = viridis_pal(option = "magma")(100), 
+#     scale = "row", 
+#     main = plottitle
+#     )
+# }
 ```
 
 ```{r}
-plotLogCPMheatmap(KEGG_gene$Lysosome, "Lysosome")
+#plotLogCPMheatmap(KEGG_gene$Lysosome, "Lysosome")
 
 # with gene nameboxplits
 logCPM %>% 
@@ -1964,7 +1966,7 @@ logCPM %>%
   ) %>% 
   left_join(x$genes) %>% 
   left_join(x$samples) %>% 
-  dplyr::filter(gene_id %in% c(KEGG_gene$Lysosome %>% .[35:60])) %>% 
+  dplyr::filter(gene_id %in% c(KEGG_gene$Lysosome %>% .[1:10])) %>% 
   ggplot(
     aes(x = treatment, y = logCPM, colour = genotype) 
   ) +
@@ -1980,99 +1982,99 @@ logCPM %>%
 ```
 
 ```{r}
-plotLogCPMheatmap(KEGG_gene$Proteasome, "Proteasome")
+#plotLogCPMheatmap(KEGG_gene$Proteasome, "Proteasome")
 ```
 
 ```{r}
-plotLogCPMheatmap(KEGG_gene$Phagosome, "Phagosome")
+#plotLogCPMheatmap(KEGG_gene$Phagosome, "Phagosome")
 ```
 
 ```{r}
-plotLogCPMheatmap(KEGG_gene$Ribosome, "Ribosome")
+#plotLogCPMheatmap(KEGG_gene$Ribosome, "Ribosome")
 
 # with gene name
-logCPM %>% 
-  as.data.frame() %>% 
-  rownames_to_column("gene_id") %>% 
-  as_tibble() %>% 
-  left_join(x$genes) %>% 
-  dplyr::filter(gene_id %in% c(x$genes %>% 
-                  dplyr::filter(grepl(gene_name, pattern = "^rpl")) %>% 
-                  .$gene_id)) %>% 
-  
-  dplyr::select(gene_name, colnames(x)) %>% 
-  as.data.frame() %>% 
-  dplyr::select(
-    x$samples %>% dplyr::filter(group == "het_control_female") %>% .$sample, 
-    x$samples %>% dplyr::filter(group == "hom_control_female") %>% .$sample, 
-    #x$samples %>% dplyr::filter(group == "het_iron_female") %>% .$sample, 
-    x$samples %>% dplyr::filter(group == "hom_iron_female") %>% .$sample,
-    x$samples %>% dplyr::filter(group == "het_control_male") %>% .$sample,
-    x$samples %>% dplyr::filter(group == "hom_control_male") %>% .$sample,
-    # x$samples %>% dplyr::filter(group == "het_iron_male") %>% .$sample,
-    x$samples %>% dplyr::filter(group == "hom_iron_male") %>% .$sample, 
-    gene_name
-    ) %>% 
-  dplyr::distinct(gene_name, .keep_all = TRUE) %>% 
-  column_to_rownames("gene_name") %>% 
-  pheatmap(
-    cluster_cols = FALSE, 
-    gaps_col = c(2,2,9,9,14,14,14,22,22, 25,25),
-    annotation_col = anno, 
-    color = viridis_pal(option = "magma")(100), 
-    scale = "row", 
-    
-    )
+# logCPM %>% 
+#   as.data.frame() %>% 
+#   rownames_to_column("gene_id") %>% 
+#   as_tibble() %>% 
+#   left_join(x$genes) %>% 
+#   dplyr::filter(gene_id %in% c(x$genes %>% 
+#                   dplyr::filter(grepl(gene_name, pattern = "^rpl")) %>% 
+#                   .$gene_id)) %>% 
+#   
+#   dplyr::select(gene_name, colnames(x)) %>% 
+#   as.data.frame() %>% 
+#   dplyr::select(
+#     x$samples %>% dplyr::filter(group == "het_control_female") %>% .$sample, 
+#     x$samples %>% dplyr::filter(group == "hom_control_female") %>% .$sample, 
+#     #x$samples %>% dplyr::filter(group == "het_iron_female") %>% .$sample, 
+#     x$samples %>% dplyr::filter(group == "hom_iron_female") %>% .$sample,
+#     x$samples %>% dplyr::filter(group == "het_control_male") %>% .$sample,
+#     x$samples %>% dplyr::filter(group == "hom_control_male") %>% .$sample,
+#     # x$samples %>% dplyr::filter(group == "het_iron_male") %>% .$sample,
+#     x$samples %>% dplyr::filter(group == "hom_iron_male") %>% .$sample, 
+#     gene_name
+#     ) %>% 
+#   dplyr::distinct(gene_name, .keep_all = TRUE) %>% 
+#   column_to_rownames("gene_name") %>% 
+#   pheatmap(
+#     cluster_cols = FALSE, 
+#     gaps_col = c(2,2,9,9,14,14,14,14,14,14,22,22, 25,25),
+#     annotation_col = anno, 
+#     color = viridis_pal(option = "magma")(100), 
+#     scale = "row", 
+#     
+#     )
 
 
 # with gene nameboxplits
-logCPM %>% 
-  as.data.frame() %>% 
-  rownames_to_column("gene_id") %>% 
-    pivot_longer(
-    names_to = "sample", 
-    values_to = "logCPM", 
-    colnames(x)
-  ) %>% 
-  left_join(x$genes) %>% 
-  left_join(x$samples) %>% 
-  dplyr::filter(gene_id %in% c(x$genes %>% 
-                  dplyr::filter(grepl(gene_name, pattern = "^rpl")) %>% 
-                  .$gene_id %>% .[1:15])) %>% 
-  ggplot(
-    aes(x = treatment, y = logCPM, colour = genotype) 
-  ) +
-  geom_boxplot(
-    outlier.shape = NA
-  ) +
-  geom_point(
-    position = position_jitterdodge()
-  ) +
-  facet_wrap(~sex+gene_name, 
-             scales = "free", 
-             nrow = 2)
+# logCPM %>% 
+#   as.data.frame() %>% 
+#   rownames_to_column("gene_id") %>% 
+#     pivot_longer(
+#     names_to = "sample", 
+#     values_to = "logCPM", 
+#     colnames(x)
+#   ) %>% 
+#   left_join(x$genes) %>% 
+#   left_join(x$samples) %>% 
+#   dplyr::filter(gene_id %in% c(x$genes %>% 
+#                   dplyr::filter(grepl(gene_name, pattern = "^rpl")) %>% 
+#                   .$gene_id %>% .[1:15])) %>% 
+#   ggplot(
+#     aes(x = treatment, y = logCPM, colour = genotype) 
+#   ) +
+#   geom_boxplot(
+#     outlier.shape = NA
+#   ) +
+#   geom_point(
+#     position = position_jitterdodge()
+#   ) +
+#   facet_wrap(~sex+gene_name, 
+#              scales = "free", 
+#              nrow = 2)
 ```
 
 ```{r}
-plotLogCPMheatmap(KEGG_gene$`Citrate cycle (TCA cycle)`, "TCA cycle")
+#plotLogCPMheatmap(KEGG_gene$`Citrate cycle (TCA cycle)`, "TCA cycle")
 ```
 
 ```{r}
-plotLogCPMheatmap(KEGG_gene$`Oxidative phosphorylation`, "OXPHOS")
+#plotLogCPMheatmap(KEGG_gene$`Oxidative phosphorylation`, "OXPHOS")
 ```
 
 ```{r}
-plotLogCPMheatmap(cell_type_markers$Oligodendrocyte, "Oligodendrocyte")
-plotLogCPMheatmap(cell_type_markers$Neuron, "Neuron")
-plotLogCPMheatmap(cell_type_markers$Microglia, "Microglia")
+# plotLogCPMheatmap(cell_type_markers$Oligodendrocyte, "Oligodendrocyte")
+# plotLogCPMheatmap(cell_type_markers$Neuron, "Neuron")
+# plotLogCPMheatmap(cell_type_markers$Microglia, "Microglia")
 ```
 
 ```{r}
-plotLogCPMheatmap(GO$GO_RHO_PROTEIN_SIGNAL_TRANSDUCTION, "Microglia")
+#plotLogCPMheatmap(GO$GO_RHO_PROTEIN_SIGNAL_TRANSDUCTION, "Microglia")
 
 ```
 ```{r}
-plotLogCPMheatmap(KEGG_gene$`Adrenergic signaling in cardiomyocytes`, "Microglia")
+#plotLogCPMheatmap(KEGG_gene$`Adrenergic signaling in cardiomyocytes`, "Microglia")
 ```
 
 
@@ -2159,5 +2161,10 @@ x %>%
 
 design %>% 
   saveRDS("data/RNAseq/R-objects/design_matrix.rds")
-```
 
+goseqResults %>% 
+  saveRDS("data/RNAseq/R-objects/goseq_goTerms.rds")
+```
+# TO DO 
+
+export goseq results/ 

@@ -1,0 +1,145 @@
+---
+title: "behaviourFam3"
+author: "Karissa Barthelson"
+date: "2024-07-23"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  autodep = TRUE,
+  echo = TRUE, 
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center", 
+  fig.retina = 1,
+  out.width ="100%", 
+  out.height = "100%"
+)
+```
+
+```{r packages}
+library(tidyverse)
+library(readxl)
+library(magrittr)
+
+# vis
+library(scales)
+library(ggpubr)
+library(ggeasy)
+library(ggfortify)
+library(ggbeeswarm)
+library(ggforce)
+library(ggrepel)
+library(kableExtra)
+library(pander)
+
+# stat analysis
+library(broom)
+library(lme4)
+library(performance)
+library(car)
+library(emmeans)
+library(glmmTMB)
+library(MASS)
+
+# set the default theme for ggplot as theme_bw
+theme_set(
+  theme_bw() + 
+    theme(
+      plot.title = element_text(hjust = 0.5, face = "bold")
+    ))
+
+
+```
+
+# Introduction and data import
+
+In the previous analyses, I did not have balanced sexes in the behaviour testing as I did not realise sex was an important descriptor. Therefore, I repeated the iron treatments and behaviour experiment on a new fam of fish which had balanced sexes (20 females and 20 males per sex and treatment)
+
+
+```{r importMeta}
+# read in metadata and cleanup cols
+meta <- 
+  read_excel("data/ymaze/fam3/20240711 naglu hom x het 6mo FeCit_fam3_metadata.xlsx") %>% 
+  mutate(
+    
+    # convert to factors
+    fish_id = as.factor(fish_id), 
+    HomeTank = as.factor(HomeTank), 
+    treatment = fct_inorder(treatment), 
+    sex = as.factor(sex), 
+    behavBatchID = as.factor(behavBatchID), 
+    genotype = factor(genotype, c("het", "hom")), 
+  
+  # create some new variables which are helpful for the 
+  geno_treat = paste0(genotype, "_", treatment) %>% as.factor(),
+  sex_geno_treat = paste0(sex, "_", genotype, "_", treatment) %>% as.factor()
+  ) 
+```
+
+### number of fish
+
+This time, the number of fish across groups is much more balanced. Although there were less male homs treated with iron - this is just the luck of the draw in being blinded during the experiment. 
+
+```{r numfishplot}
+meta %>% 
+  ggplot(
+    aes(x = geno_treat, fill = sex)
+  ) +
+  geom_bar(position = "dodge") +
+  scale_y_continuous(
+    breaks = 0:15
+  )+
+  facet_wrap(~sex) +
+  labs(
+    title = "Number of fish in the experiment", 
+    x = "Experimental Group"
+  ) +
+  theme(axis.text.x = element_text(angle = -45, hjust = 0))
+```
+
+# explanation of processing videos 
+
+## concat & compress
+For each behav trial, there were 2 videos produced. This is because Zantiks has a max file size of 2Gb. These raw videos in the `data/ymaze/fam3/raw_videos/` folder were first concatenated using ffmpeg to make a single video. They were then compressed so the file size was smaller. This processing was performed using the `concat videos.py` in the scripts folder. 
+
+```{r concatvidsScript, attr.output='style="max-height: 150px;"'}
+readLines("data/ymaze/fam3/scripts/python/concat videos.py")
+```
+
+## splitting, bg substration. 
+The next step was splitting the videos into the individual Y-shapes, as this is easier for tracking by sleap.ai. 
+
+First, needed to extract a frame using ffmeg. This was performed using this script. 
+
+```{r bashextractframe, attr.output='style="max-height: 150px;"'}
+readLines("data/ymaze/fam3/scripts/sh/extract_frames.bash")
+```
+
+These frames were edited in GIMP to make masks for video splitting.
+
+The videos were bg substracted, gaussian blurred and split to individual Y mazes using this script below. This took hours on my laptop. 
+
+```{r videopreprocessing, attr.output='style="max-height: 150px;"'}
+readLines("data/ymaze/fam3/scripts/python/KB local video preprocessing.py")
+```
+
+The videos are now ready for tracking using sleap.ai. 
+
+# details of sleap.ai tracking
+
+Checked it installed using this command
+
+```conda activate sleap```
+
+```sleap-label```
+
+
+Labelled 31 frames with the head, body and tail of a female fish (fish)
+
+
+
+

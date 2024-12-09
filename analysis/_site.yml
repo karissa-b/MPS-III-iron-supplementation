@@ -5,8 +5,14 @@ navbar:
   left:
   - text: Home
     href: index.html
+  - text: RNAseq_QC
+    href: RNAseq_QC.html
   - text: RNAseq
     href: RNA_seq.html
+  - text: WGCNA_RNAseq
+    href: WGCNA_2.html
+  - text: behaviour_with_balanced_sexes
+    href: behaviourFam3.html
 output:
   workflowr::wflow_html:
     toc: yes

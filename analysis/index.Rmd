@@ -12,11 +12,14 @@ editor_options:
 
 This website contains my analysis described in Barthelson et al.
 
--   Behaviour
+-   Behaviour:
+
+    - [Y-maze with balanced sexes](behaviourFam3.html)
 
 -   RNA-seq:
 
+    -   [QC of raw data](RNAseq_QC.html)
     -   [DEGs and Pathway analysis](RNA_seq.html)
-    -   WGCNA
+    -   [WGCNA](WGCNA_2.html)
 
 -   Metabolomics
